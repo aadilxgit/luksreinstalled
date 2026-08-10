@@ -451,15 +451,20 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
         CONFDIR=${CONFDIR:-/etc/initramfs-tools} DPKG_ARCH=${DPKG_ARCH:-$(command -v dpkg >/dev/null 2>&1 && dpkg --print-architecture)}
     . /usr/share/initramfs-tools/hook-functions
     safe_copy() { # $1 = src, $2 = target_dir
-        local src=$1 target_dir=$2
-        if head -c 4 "$src" 2>/dev/null | grep -q $'\x7fELF'; then
-            ( set +o pipefail +e; copy_exec "$src" "$target_dir" ) 2>/dev/null || copy_file binary "$src" "$target_dir" 2>/dev/null || true
+        local src=$1 target_dir=$2 real_src
+        real_src=$(realpath "$src" 2>/dev/null || readlink -f "$src" 2>/dev/null || echo "$src")
+        if head -c 4 "$real_src" 2>/dev/null | grep -q $'\x7fELF'; then
+            ( set +o pipefail +e; copy_exec "$real_src" "$target_dir" ) 2>/dev/null || copy_file binary "$real_src" "$target_dir" 2>/dev/null || true
+            if [ "$src" != "$real_src" ]; then
+                mkdir -p "$DESTDIR/$target_dir"
+                ln -sf "$(basename "$real_src")" "$DESTDIR/$target_dir/$(basename "$src")" 2>/dev/null || true
+            fi
         else
             copy_file binary "$src" "$target_dir" 2>/dev/null || true
         fi
     }
 
-    for cmd in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mkfs.ext4 mkswap blkid debootstrap dpkg wget ip; do
+    for cmd in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mke2fs mkfs.ext4 mkswap blkid debootstrap dpkg wget ip; do
         p=$(command -v "$cmd") || die "missing $cmd"
         case $cmd in
             debootstrap) safe_copy "$p" /usr/sbin/ ;;
