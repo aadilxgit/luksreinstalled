@@ -22,6 +22,10 @@ entry_boot=$(render_boot_entry 'auto=true console=ttyS0,115200n8 console=tty0 --
 [[ $entry_boot == *'linux /boot/reinstall/linux auto=true console=ttyS0,115200n8 console=tty0 ---'* ]] || { echo 'render_boot_entry (/boot prefix) missing linux line'; exit 1; }
 [[ $entry_boot == *'initrd /boot/reinstall/initrd.preseed.gz'* ]] || { echo 'render_boot_entry (/boot prefix) missing initrd line'; exit 1; }
 pass render_boot_entry_boot
+BOOT_MODE=bios; [[ $(render_partition_tree) == *'[biosgrub 1M]'* && $(render_partition_tree) != *ESP* ]] || { echo 'render_partition_tree (bios) missing biosgrub'; exit 1; }
+pass render_partition_tree_bios
+BOOT_MODE=uefi; [[ $(render_partition_tree) == *'[ESP 538–1075M]'* ]] || { echo 'render_partition_tree (uefi) missing ESP'; exit 1; }
+pass render_partition_tree_uefi
 # Config file must not clobber command-line flags (the LOG_FILE="" wipe bug).
 LOG_FILE=/tmp/reinstall.log; ASSUME_YES=yes; config_pin LOG_FILE ASSUME_YES
 load_config_file "$root/reinstall.conf.example"

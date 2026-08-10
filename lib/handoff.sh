@@ -23,7 +23,9 @@ build_cmdline() {
 }
 
 render_partition_tree() {
-    printf '%s → [ESP 538–1075M] [/boot %sM ext4] [LUKS→vg_crypt→ root(rest) ext4, swap %sM]\n' "${TARGET_DISK:-<disk>}" "${BOOT_SIZE_MB:-1024}" "${SWAP_SIZE_MB:-4096}"
+    local lead
+    if [[ $BOOT_MODE == uefi ]]; then lead='[ESP 538–1075M]'; else lead='[biosgrub 1M]'; fi
+    printf '%s → %s [/boot %sM ext4] [LUKS→vg_crypt→ root(rest) ext4, swap %sM]\n' "${TARGET_DISK:-<disk>}" "$lead" "${BOOT_SIZE_MB:-1024}" "${SWAP_SIZE_MB:-4096}"
 }
 
 # Impure collector (follows lib/detect.sh's *_collect convention): resolves the facts
