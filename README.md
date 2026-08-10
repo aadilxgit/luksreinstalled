@@ -8,25 +8,7 @@ This tool irreversibly erases the selected disk. Use it only on a VPS with conso
 
 ## Quick start
 
-Create the repository on GitHub, or push this directory as an existing repository:
-
-```bash
-# …or create a new repository on the command line
-echo "# luksreinstalled" >> README.md
-git init
-git add README.md
-git commit -m "first commit"
-git branch -M main
-git remote add origin https://github.com/aadilxgit/luksreinstalled.git
-git push -u origin main
-
-# …or push an existing repository from the command line
-git remote add origin https://github.com/aadilxgit/luksreinstalled.git
-git branch -M main
-git push -u origin main
-```
-
-On the machine to reinstall, clone the repo, enter it, and copy the example configuration:
+Clone the repo, enter it, and copy the example configuration:
 
 ```bash
 git clone https://github.com/aadilxgit/luksreinstalled.git
