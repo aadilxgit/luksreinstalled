@@ -490,6 +490,14 @@ normalize_initrd_to_gzip() {  # $1 = source, $2 = dest
     gzip -t "$dst" 2>/dev/null || { echo "initrd: gzip recompression of $src failed" >&2; rm -f "$dst"; return 1; }
 }
 
+# Content check: the staged initrd must decompress to a parseable cpio that
+# contains /init. Catches a broken engine archive at build time, before the
+# reboot. GNU cpio -t validates the first archive member (which holds /init);
+# it stops at the first TRAILER, which is fine for this check.
+verify_initrd_content() {  # $1 = gzip-compressed initrd
+    zcat "$1" 2>/dev/null | cpio -t 2>/dev/null | grep -qE '(^|/)init$'
+}
+
 # Builds the engine kernel+initrd pair into $WORKDIR/linux and
 # $WORKDIR/initrd.preseed.gz (same staging paths the installer method uses,
 # so stage_boot_entry / cancel_handoff work unchanged).
@@ -513,6 +521,8 @@ build_debootstrap_initramfs() {
     cp "$linux_src" "$WORKDIR/linux"
     normalize_initrd_to_gzip "$WORKDIR/initrd.tmp" "$WORKDIR/initrd.preseed.gz" \
         || die "engine initrd failed integrity check"
+    verify_initrd_content "$WORKDIR/initrd.preseed.gz" \
+        || die "engine initrd is not a valid cpio archive containing /init — rebuild failed"
     rm -f "$WORKDIR/initrd.tmp"
     log_info "engine initramfs built: kernel $kver, initrd $(stat -c%s "$WORKDIR/initrd.preseed.gz") bytes"
 }
@@ -521,7 +531,7 @@ do_debootstrap_handoff() {
     debootstrap_preflight
     build_debootstrap_initramfs
     debootstrap_cmdline >/dev/null
-    stage_boot_entry
+    stage_boot_entry "$CMDLINE"
     arm_next_boot
     confirm_handoff || die "confirmation declined"
     execute_handoff

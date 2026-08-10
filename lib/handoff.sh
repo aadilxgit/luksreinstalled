@@ -90,6 +90,7 @@ require_boot_space() {
 }
 
 # Highest-risk new function: mutates the running host's bootloader configuration.
+# $1 = optional precomputed kernel cmdline (debootstrap engine); default: d-i cmdline.
 stage_boot_entry() {
     require_cmd update-grub
     [[ -n ${BOOT_FS_UUID:-} ]] || detect_boot_grub_facts
@@ -98,11 +99,16 @@ stage_boot_entry() {
     chmod 0700 /boot/reinstall
     run cp "$WORKDIR/linux" /boot/reinstall/linux
     run cp "$WORKDIR/initrd.preseed.gz" /boot/reinstall/initrd.preseed.gz
+    [[ -s /boot/reinstall/linux && -s /boot/reinstall/initrd.preseed.gz ]] || die "staged files missing after copy"
     chmod 0600 /boot/reinstall/linux /boot/reinstall/initrd.preseed.gz
     # shellcheck disable=SC2016  # "$0" must stay literal — it is written into the generated 40_custom script, to expand there at its own runtime, not here
     [[ -s /etc/grub.d/40_custom ]] || { printf '#!/bin/sh\nexec tail -n +3 "$0"\n' >/etc/grub.d/40_custom; chmod +x /etc/grub.d/40_custom; }
     sed -i '/^### BEGIN debian-luks-reinstall ###$/,/^### END debian-luks-reinstall ###$/d' /etc/grub.d/40_custom
-    build_cmdline >/dev/null
+    if [[ -n ${1:-} ]]; then
+        CMDLINE=$1
+    else
+        build_cmdline >/dev/null
+    fi
     render_boot_entry "$CMDLINE" "$BOOT_FS_UUID" "$BOOT_PART_MODULE" "$BOOT_FS_MODULE" "$GRUB_PATH_PREFIX" >> /etc/grub.d/40_custom
     run update-grub
 }

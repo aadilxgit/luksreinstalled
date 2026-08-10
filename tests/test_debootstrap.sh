@@ -97,6 +97,22 @@ normalize_initrd_to_gzip "$nidir/in.trunc" "$nidir/out4.gz" && { echo 'normalize
 rm -rf "$nidir"
 pass normalize_initrd_to_gzip
 
+# Initrd content check: must reject garbage, accept a real newc archive with /init.
+vdir=$(mktemp -d /tmp/reinstall-verify.XXXXXX)
+mkdir -p "$vdir/root"
+printf '#!/bin/sh\nexit 0\n' > "$vdir/root/init"
+( cd "$vdir/root" && find . | cpio -o -H newc 2>/dev/null | gzip -1 ) > "$vdir/good.gz"
+verify_initrd_content "$vdir/good.gz" || { echo 'verify_initrd_content rejected a valid initrd'; exit 1; }
+printf 'this is not an initramfs\n' | gzip -1 > "$vdir/bad.gz"
+verify_initrd_content "$vdir/bad.gz" && { echo 'verify_initrd_content accepted garbage'; exit 1; } || true
+rm -rf "$vdir"
+pass verify_initrd_content
+
+# The staged entry must carry the engine cmdline, not the d-i one.
+grep -q 'stage_boot_entry "$CMDLINE"' "$root/lib/debootstrap.sh" || { echo 'debootstrap handoff must pass the engine cmdline'; exit 1; }
+grep -q 'CMDLINE=$1' "$root/lib/handoff.sh" || { echo 'stage_boot_entry must accept a cmdline argument'; exit 1; }
+pass engine_cmdline_wiring
+
 # Engine script: static, POSIX-safe, self-halting on failure, no set -e.
 eng=$(mktemp /tmp/reinstall-engine.XXXXXX)
 write_engine_script "$eng"
