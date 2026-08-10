@@ -56,3 +56,35 @@ if command -v cpio >/dev/null && command -v gzip >/dev/null && command -v zcat >
 else
   echo 'SKIP payload_build (cpio/gzip/zcat missing)'
 fi
+# detect_boot_grub_facts must read PTTYPE of the disk only (-d): without it,
+# lsblk prints the column for every partition too, yielding
+# 'gpt\ngpt\ngpt\ngpt' and dying. Faked command PATH simulates a GPT disk
+# with a root partition and no separate /boot.
+fakebin=$(mktemp -d /tmp/reinstall-fakebin.XXXXXX)
+cat >"$fakebin/lsblk" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  -no) echo vda ;;                       # -no PKNAME -> parent disk
+  -dno) echo gpt ;;                      # -dno PTTYPE -> disk only
+  *) for _ in 1 2 3 4; do echo gpt; done ;;  # subtree PTTYPE (would break)
+esac
+EOF
+cat >"$fakebin/mountpoint" <<'EOF'
+#!/usr/bin/env bash
+[[ $1 == -q && $2 == /boot ]] && exit 1 || exit 0
+EOF
+cat >"$fakebin/findmnt" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  -no) [[ $2 == FSTYPE ]] && echo ext4 || echo /dev/vda1 ;;
+esac
+EOF
+cat >"$fakebin/blkid" <<'EOF'
+#!/usr/bin/env bash
+echo 11111111-2222-3333-4444-555555555555
+EOF
+chmod +x "$fakebin"/lsblk "$fakebin"/mountpoint "$fakebin"/findmnt "$fakebin"/blkid
+PATH="$fakebin:$PATH" detect_boot_grub_facts
+[[ $BOOT_PART_MODULE == part_gpt && $BOOT_FS_MODULE == ext2 && $BOOT_FS_UUID == 11111111-2222-3333-4444-555555555555 && $GRUB_PATH_PREFIX == /boot ]] || { echo 'detect_boot_grub_facts failed'; exit 1; }
+pass detect_boot_grub_facts
+rm -rf "$fakebin"

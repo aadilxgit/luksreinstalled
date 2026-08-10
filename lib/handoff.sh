@@ -49,7 +49,7 @@ detect_boot_grub_facts() {
         *) die "unsupported /boot filesystem '$fstype' for GRUB staging" ;;
     esac
     pk=$(lsblk -no PKNAME "$BOOT_DEV" | head -n1)
-    pttype=$(lsblk -no PTTYPE "/dev/$pk" 2>/dev/null || true)
+    pttype=$(lsblk -dno PTTYPE "/dev/$pk" 2>/dev/null || true)
     case $pttype in
         gpt) BOOT_PART_MODULE=part_gpt ;;
         dos) BOOT_PART_MODULE=part_msdos ;;
