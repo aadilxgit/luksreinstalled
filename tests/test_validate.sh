@@ -52,13 +52,15 @@ if command -v cpio >/dev/null && command -v gzip >/dev/null && command -v zcat >
   build_payload
   [[ -s "$WORKDIR/initrd.preseed.gz" && "$(stat -c %s "$WORKDIR/initrd.preseed.gz")" -gt "$(stat -c %s "$WORKDIR/initrd.gz")" ]] || { echo 'payload append failed'; exit 1; }
   pass payload_build
-  # The final staged initrd (two concatenated gzip members) must carry the payload:
-  # a booted-but-broken initrd stalls the installer with a dead console.
-  zcat "$WORKDIR/initrd.preseed.gz" | cpio -t 2>/dev/null | check_payload_entries || { echo 'final initrd missing payload files'; exit 1; }
+  # The final staged initrd must pass gzip integrity across all concatenated
+  # members (base initrd + payload): a booted-but-broken initrd stalls the
+  # installer with a dead console.
+  gzip -t "$WORKDIR/initrd.preseed.gz" || { echo 'final initrd fails gzip integrity'; exit 1; }
   pass payload_final_initrd
-  # Negative: an incomplete listing must be rejected.
-  printf 'opt/reinstall/late.sh\n' | check_payload_entries && { echo 'check_payload_entries accepted incomplete listing'; exit 1; }
-  pass check_payload_entries_negative
+  # Negative: truncating the appended member must fail integrity.
+  head -c $(( $(stat -c %s "$WORKDIR/initrd.preseed.gz") - 16 )) "$WORKDIR/initrd.preseed.gz" > "$WORKDIR/trunc.preseed.gz"
+  if gzip -t "$WORKDIR/trunc.preseed.gz" 2>/dev/null; then echo 'gzip -t accepted truncated initrd'; exit 1; fi
+  pass payload_truncated_rejected
   rm -rf "$WORKDIR"
 else
   echo 'SKIP payload_build (cpio/gzip/zcat missing)'

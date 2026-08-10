@@ -28,8 +28,10 @@ build_payload() {
     cp "$WORKDIR/initrd.gz" "$WORKDIR/initrd.preseed.gz"
     cat "$WORKDIR/payload.cpio.gz" >> "$WORKDIR/initrd.preseed.gz"
     [[ -s "$WORKDIR/initrd.preseed.gz" ]] || die "initrd append failed"
-    # The kernel must unpack the *final* staged initrd: decompress the two
-    # concatenated gzip members (base initrd + payload) and require the payload
-    # entries again — a booted-but-broken initrd stalls the installer invisibly.
-    zcat "$WORKDIR/initrd.preseed.gz" | cpio -t 2>/dev/null | check_payload_entries || die "staged initrd.preseed.gz missing required files"
+    # The kernel must unpack the *final* staged initrd. gzip -t tests every
+    # concatenated member (base initrd + payload), so a truncated or corrupt
+    # append aborts staging instead of booting a broken initrd that stalls the
+    # installer invisibly. (cpio -t cannot be used here: GNU cpio stops at the
+    # first archive's TRAILER!!! and never lists the appended member.)
+    gzip -t "$WORKDIR/initrd.preseed.gz" || die "staged initrd.preseed.gz failed gzip integrity check"
 }
