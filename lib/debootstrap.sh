@@ -580,11 +580,15 @@ build_debootstrap_initramfs() {
     rm -rf "$tree"
     mkdir -p "$tree"
     unmkinitramfs "$initrd_src" "$tree" || die "cannot unpack host initrd $initrd_src"
-    [[ -x $tree/init ]] || die "host initrd $initrd_src has no executable /init — cannot serve as engine base"
-    inject_engine_into_tree "$tree" || die "engine payload missing or incomplete"
-    inject_engine_tools "$tree" "$kver"
+    initrd_root=$tree
+    if [[ -d $tree/main ]]; then
+        initrd_root=$tree/main
+    fi
+    [[ -x $initrd_root/init ]] || die "host initrd $initrd_src has no executable /init — cannot serve as engine base"
+    inject_engine_into_tree "$initrd_root" || die "engine payload missing or incomplete"
+    inject_engine_tools "$initrd_root" "$kver"
 
-    if ! ( cd "$tree" && find . -print0 | cpio --null -o -H newc --quiet 2>/dev/null | gzip -1 -c ) > "$WORKDIR/initrd.preseed.gz.tmp"; then
+    if ! ( cd "$initrd_root" && find . -print0 | cpio --null -o -H newc --quiet 2>/dev/null | gzip -1 -c ) > "$WORKDIR/initrd.preseed.gz.tmp"; then
         rm -f "$WORKDIR/initrd.preseed.gz.tmp"
         die "engine initrd repack failed"
     fi
