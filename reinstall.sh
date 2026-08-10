@@ -3,7 +3,7 @@ set -Eeuo pipefail
 BASE=$(cd "$(dirname "$0")" && pwd)
 source "$BASE/lib/common.sh"
 # shellcheck disable=SC1090  # lib/$f.sh iterates a fixed, hardcoded list — not user-controlled input
-for f in config detect validate download preseed postinstall initrd handoff; do source "$BASE/lib/$f.sh"; done
+for f in config detect validate download preseed postinstall initrd handoff debootstrap; do source "$BASE/lib/$f.sh"; done
 cat >&2 <<'BANNER'
 TTTTT  H   H  EEEEE        H   H   OOO   RRRR   SSSS  EEEEE
   T    H   H  E            H   H  O   O  R   R  S     E    
@@ -14,7 +14,9 @@ TTTTT  H   H  EEEEE        H   H   OOO   RRRR   SSSS  EEEEE
                          sends his reguards
 BANNER
 # shellcheck disable=SC2034  # ASSUME_YES is consumed by lib/handoff.sh confirm_handoff and lib/validate.sh, sourced dynamically above
-while (($#)); do case $1 in --dry-run) DRY_RUN=yes;; --config) CONFIG_FILE=$2; shift;; --verbose|-v) LOG_LEVEL=DEBUG; config_pin LOG_LEVEL;; --log-file) LOG_FILE=$2; shift; config_pin LOG_FILE;; --assume-yes) ASSUME_YES=yes; config_pin ASSUME_YES;; --cancel) CANCEL=yes;; -h|--help) echo "Usage: reinstall.sh [--dry-run] [--config FILE] [--verbose] [--log-file PATH] [--assume-yes] [--cancel]"; exit 0;; esac; shift; done
+while (($#)); do case $1 in --dry-run) DRY_RUN=yes;; --method) METHOD=$2; shift;; --config) CONFIG_FILE=$2; shift;; --verbose|-v) LOG_LEVEL=DEBUG; config_pin LOG_LEVEL;; --log-file) LOG_FILE=$2; shift; config_pin LOG_FILE;; --assume-yes) ASSUME_YES=yes; config_pin ASSUME_YES;; --cancel) CANCEL=yes;; -h|--help) echo "Usage: reinstall.sh [--dry-run] [--method installer|debootstrap] [--config FILE] [--verbose] [--log-file PATH] [--assume-yes] [--cancel]"; exit 0;; esac; shift; done
+METHOD=${METHOD:-installer}
+case $METHOD in installer|debootstrap) ;; *) die "unknown --method: $METHOD (expected installer or debootstrap)";; esac
 LOG_FILE="${LOG_FILE:-/tmp/reinstall-$(date -u +%Y%m%d-%H%M%S).log}"
 init_logging "$@"
 if [[ ${CANCEL:-no} == yes ]]; then require_root; cancel_handoff; exit 0; fi
@@ -43,9 +45,18 @@ build_preseed "$TMPPW" "$ADMIN_PW_CRYPT"
 build_postinstall_artifacts "$TMPPW"
 if [[ ${DRY_RUN:-no} == yes ]]; then
     render_partition_tree
+    if [[ $METHOD == debootstrap ]]; then
+        debootstrap_plan
+        exit 0
+    fi
     cat "$WORKDIR/preseed.cfg"
     build_cmdline
     render_boot_entry "$CMDLINE" 00000000-0000-0000-0000-000000000000 part_gpt ext2 ''
+    exit 0
+fi
+if [[ $METHOD == debootstrap ]]; then
+    log_step "debootstrap"
+    do_debootstrap_handoff
     exit 0
 fi
 log_step "download"

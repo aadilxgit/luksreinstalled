@@ -1,6 +1,11 @@
 # Debian LUKS Reinstall
 
-A Bash tool that reinstalls a running Debian 13 (trixie) VPS by staging the text installer as a one-time GRUB boot entry and rebooting into it, creating GPT + unencrypted `/boot` and full-disk LUKS/LVM storage, rotating the temporary installer key to the requested passphrase, configuring Dropbear remote unlock, and applying SSH, firewall, PAM, sysctl, and unattended-upgrade hardening.
+A Bash tool that reinstalls a running Debian 13 (trixie) VPS by staging a one-time GRUB boot entry and rebooting into it, creating GPT + unencrypted `/boot` and full-disk LUKS/LVM storage, rotating the temporary installer key to the requested passphrase, configuring Dropbear remote unlock, and applying SSH, firewall, PAM, sysctl, and unattended-upgrade hardening.
+
+Two install engines are available via `--method` (default `installer`):
+
+- `installer` — stages the Debian text installer (d-i) as the boot entry, fully preseeded.
+- `debootstrap` — stages a custom initramfs built from the **running system's own kernel** and runs debootstrap from inside it. Use this when the d-i kernel deadlocks on the host (see [Debootstrap method](#debootstrap-method)).
 
 ## Warning
 
@@ -132,6 +137,32 @@ This removes the `debian-luks-reinstall` block from `/etc/grub.d/40_custom`, reg
 
 For automation, use `ASSUME_YES=yes` or `--assume-yes`. This bypasses the final destructive confirmation and must not be used without an external approval gate.
 
+## Debootstrap method
+
+If the d-i kernel intermittently deadlocks on the host during early boot (console freezes seconds after power-on, keystrokes still echo, disk untouched; installed kernels boot fine), run the second engine instead:
+
+```bash
+sudo ./reinstall.sh --method debootstrap --config reinstall.conf --log-file /var/log/reinstall.log
+```
+
+It behaves like the installer method from the operator's point of view — same configuration, same `--dry-run` (prints the engine plan), same staging, `--cancel`, and final `YES` confirmation — but the staged boot entry loads the **host's own kernel** with a custom initramfs instead of the d-i kernel. The engine runs unattended inside the initramfs (root is a ramdisk, so the disk can be repartitioned freely — no unmounting the running system):
+
+1. Copy the staged kernel/initrd to a rescue location before the disk is touched.
+2. GPT partition: 1M `biosgrub` + `/boot` (`BOOT_SIZE_MB`, ext4) + LUKS.
+3. LUKS format with the temporary random key → `vg_crypt` (swap `SWAP_SIZE_MB` + root).
+4. `debootstrap` of `DEBIAN_SUITE` with the same package set the preseed installs.
+5. Write `fstab`, `crypttab`, `/etc/network/interfaces`, hostname, timezone.
+6. `grub-install` into the target disk, then the shared post-install worker (passphrase rotation, admin user, Dropbear, hardening) inside the chroot.
+7. Verify (grub.cfg root device, kernels, initramfs, Dropbear host key), then reboot into the new system.
+
+Progress is printed to the VGA console (`nomodeset`), so the provider VNC panel shows the whole install live. On any failure the engine halts with the log on the console instead of rebooting; a "Debian LUKS reinstall (retry)" entry is left in the new GRUB menu, and re-running the engine resumes (existing LUKS/LVM/filesystems are detected and reused — only debootstrap and the config steps re-run). After success the marker `/etc/reinstall-done` on the new root makes a re-run refuse to wipe a finished install.
+
+Requirements specific to this method:
+
+- The host must be a Debian-family system with `apt`; the tool auto-installs `debootstrap`, `parted`, `cryptsetup-bin`, and `lvm2` when missing (the binaries are embedded into the engine initramfs).
+- BIOS boot only (`BOOT_MODE=bios`); UEFI hosts keep the `installer` method.
+- Logs: `/var/log/engine.log` and `/var/log/vps-postinst.log` on the new system.
+
 ## After installation
 
 The installer uses the temporary random LUKS key only during installation. The post-install worker adds the user passphrase, verifies it with `cryptsetup open --test-passphrase`, and removes the temporary key only after verification succeeds.
@@ -226,6 +257,16 @@ Debian trixie uses the systemd journal by default. The generated jail sets `back
 ### Installer dies or the VM resets shortly after booting
 
 Some providers run QEMU with the default ICH9 chipset, which exposes an emulated TCO watchdog (`iTCO_wdt`) that resets the VM when the guest does not service it — the Debian installer has no petting daemon of its own, so the machine can die mid-install with the disk untouched. Detect it on the current system with `dmesg | grep -i tco` (a line like `iTCO_wdt … heartbeat=30 sec` means it is present). This tool already handles it: the installer payload ships `/scripts/init-top/zz-watchdog-pet` (an initramfs hook that pets the watchdog every 5 s for the entire install), the preseed re-arms it via `preseed/early_command`, and the post-install worker installs the `watchdog` service on the target so the new system keeps petting after boot. No configuration needed.
+
+### Console freezes seconds after boot; keystrokes echo but nothing installs
+
+If the console freezes at the boot log (e.g. at the USB/xHCI "ports detected" lines), keystrokes still echo on the console, the disk is untouched after 30+ minutes, and installed kernels boot the host reliably, the **d-i kernel itself is deadlocking** on this host — it is intermittent and specific to the installer kernel. The echo is a red herring: a kernel that deadlocks after printing its last boot line still services keyboard interrupts, but it is not booting. Power-cycle via the provider panel, then run with the second engine, which boots the host's own kernel instead:
+
+```bash
+sudo ./reinstall.sh --method debootstrap --config reinstall.conf --log-file /var/log/reinstall.log
+```
+
+See [Debootstrap method](#debootstrap-method).
 
 ## Verification
 
