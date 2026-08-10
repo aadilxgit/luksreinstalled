@@ -76,27 +76,6 @@ resolve_host_kernel 6.1.0-test "$bootd" "$rootd" && { echo 'resolve_host_kernel 
 rm -rf "$kdir"
 pass resolve_host_kernel
 
-# Initrd normalization: the host's COMPRESS setting must not leak into the
-# staged initrd — always gzip, always verified.
-nidir=$(mktemp -d /tmp/reinstall-initrd.XXXXXX)
-head -c 262144 /dev/urandom > "$nidir/rand"
-gzip -c "$nidir/rand" > "$nidir/in.gz"
-normalize_initrd_to_gzip "$nidir/in.gz" "$nidir/out.gz" || { echo 'normalize failed on gzip input'; exit 1; }
-gzip -t "$nidir/out.gz" || { echo 'normalized output is not gzip'; exit 1; }
-if command -v zstd >/dev/null 2>&1; then
-    zstd -q -c "$nidir/rand" > "$nidir/in.zst"
-    normalize_initrd_to_gzip "$nidir/in.zst" "$nidir/out2.gz" || { echo 'normalize failed on zstd input'; exit 1; }
-    gzip -t "$nidir/out2.gz" || { echo 'zstd-normalized output is not gzip'; exit 1; }
-fi
-printf '070701' > "$nidir/in.plain"; head -c 4096 /dev/zero >> "$nidir/in.plain"
-normalize_initrd_to_gzip "$nidir/in.plain" "$nidir/out3.gz" || { echo 'normalize failed on plain cpio'; exit 1; }
-gzip -t "$nidir/out3.gz" || { echo 'cpio-normalized output is not gzip'; exit 1; }
-head -c 64 "$nidir/in.gz" > "$nidir/in.trunc"
-normalize_initrd_to_gzip "$nidir/in.trunc" "$nidir/out4.gz" && { echo 'normalize accepted truncated gzip'; exit 1; } || true
-[[ -e "$nidir/out4.gz" ]] && { echo 'normalize left a partial output behind'; exit 1; }
-rm -rf "$nidir"
-pass normalize_initrd_to_gzip
-
 # Initrd content check: must reject garbage, accept a real newc archive with /init.
 vdir=$(mktemp -d /tmp/reinstall-verify.XXXXXX)
 mkdir -p "$vdir/root"
@@ -158,26 +137,28 @@ done
 rm -f "$eng"
 pass write_engine_script
 
-# Initramfs hook embeds engine + tools + watchdog pet hook.
+# Engine injection into the unpacked initrd tree: files land at the engine's
+# runtime paths with the right modes; a missing payload must fail loudly.
 LOG_FILE=/tmp/reinstall-test.log; : >"$LOG_FILE"
-NIC_MODULE=virtio_net; WORKDIR=/tmp/reinstall-eng-test
+NIC_MODULE=virtio_net; WORKDIR=$(mktemp -d /tmp/reinstall-eng-test.XXXXXX)
 mkdir -p "$WORKDIR/payload/opt/reinstall"
-printf x > "$WORKDIR/payload/opt/reinstall/postinstall.sh"; printf y > "$WORKDIR/payload/opt/reinstall/secrets.env"
-printf '#!/bin/sh\n' > "$WORKDIR/engine.sh"
+printf '#!/bin/sh\n' > "$WORKDIR/payload/opt/reinstall/postinstall.sh"; printf y > "$WORKDIR/payload/opt/reinstall/secrets.env"
+printf '#!/bin/sh\n' > "$WORKDIR/engine.sh"; chmod +x "$WORKDIR/engine.sh"
+printf 'ENV=1\n' > "$WORKDIR/debootstrap.env"
 write_watchdog_pet_hook "$WORKDIR/payload"
-# write_initramfs_hook resolves host tool paths via command -v; fake them.
-fakebin=$(mktemp -d /tmp/reinstall-eng-bin.XXXXXX)
-for c in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mkfs.ext4 mkswap blkid debootstrap dpkg wget ip; do
-  printf '#!/bin/sh\nexit 0\n' > "$fakebin/$c"; chmod +x "$fakebin/$c"
-done
-hook=$(mktemp /tmp/reinstall-hook.XXXXXX)
-PATH="$fakebin:$PATH" write_initramfs_hook "$hook"
-bash -n "$hook" || { echo 'hook fails bash -n'; exit 1; }
-for needle in 'manual_add_modules virtio_net lpc_ich iTCO_wdt' 'copy_exec ' 'reinstall-debootstrap.env' 'zz-watchdog-pet' 'zz-reinstall-engine' 'debootstrap.env'; do
-  grep -qF -- "$needle" "$hook" || { echo "hook missing: $needle"; exit 1; }
-done
-rm -f "$hook"; rm -rf "$WORKDIR" "$fakebin"
-pass write_initramfs_hook
+tree=$(mktemp -d /tmp/reinstall-eng-tree.XXXXXX)
+inject_engine_into_tree "$tree" || { echo 'inject_engine_into_tree failed'; exit 1; }
+[[ -x "$tree/scripts/init-bottom/zz-reinstall-engine" ]] || { echo 'engine not injected/executable'; exit 1; }
+[[ -x "$tree/scripts/init-top/zz-watchdog-pet" ]] || { echo 'watchdog hook not injected/executable'; exit 1; }
+[[ -f "$tree/etc/reinstall-debootstrap.env" && "$(stat -c %a "$tree/etc/reinstall-debootstrap.env")" == 600 ]] || { echo 'env not injected with 600'; exit 1; }
+[[ -f "$tree/etc/reinstall-payload/postinstall.sh" && "$(stat -c %a "$tree/etc/reinstall-payload/postinstall.sh")" == 700 ]] || { echo 'postinstall.sh not injected with 700'; exit 1; }
+[[ -f "$tree/etc/reinstall-payload/secrets.env" && "$(stat -c %a "$tree/etc/reinstall-payload/secrets.env")" == 600 ]] || { echo 'secrets.env not injected with 600'; exit 1; }
+rm -rf "$tree"; mkdir -p "$tree"
+rm -f "$WORKDIR/payload/opt/reinstall/secrets.env"
+inject_engine_into_tree "$tree" && { echo 'inject accepted missing payload'; exit 1; } || true
+[[ -e "$tree/scripts" ]] && { echo 'inject left a partial tree behind'; exit 1; }
+rm -rf "$WORKDIR" "$tree"
+pass inject_engine_into_tree
 
 # reinstall.sh wiring: --method flag, lib source, routing.
 grep -q -- '--method' "$root/reinstall.sh" || { echo 'reinstall.sh missing --method'; exit 1; }
