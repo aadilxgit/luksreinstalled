@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# reinstall.conf — copy to reinstall.conf and edit. All values optional;
+# blank network/disk fields are auto-detected. Auto-loaded from ./reinstall.conf
+# or /etc/reinstall.conf, or via --config FILE. Unknown keys are ignored.
+# Precedence: interactive prompt > environment > config file > detection > defaults.
+# This tool uses Bash arrays and is not POSIX sh.
+DEBIAN_SUITE="trixie"
+MIRROR="https://deb.debian.org/debian"
+TIMEZONE="UTC"
+TARGET_DISK=""
+PRIMARY_IFACE=""
+IPV4_ADDR=""
+NETMASK=""
+GATEWAY=""
+DNS_SERVERS=""
+HOSTNAME="debian"
+DOMAIN="local"
+BOOT_MODE=""
+NIC_MODULE=""
+ADMIN_USER="admin"
+ADMIN_SSH_PUBKEY=""
+ADMIN_SSH_PUBKEY_FILE=""
+ADMIN_PASSWORD_HASH=""
+SSH_PORT="2222"
+DROPBEAR_PORT="22"
+WEB_PORTS="80 443"
+BOOT_SIZE_MB="1024"
+SWAP_SIZE_MB="4096"
+LUKS_PASSPHRASE=""
+ASSUME_YES="no"
+WORKDIR=""
+LOG_FILE=""
+LOG_LEVEL="INFO"

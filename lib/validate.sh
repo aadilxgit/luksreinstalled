@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ ${_REINSTALL_VALIDATE_SH:-0} == 1 ]] && return 0
+_REINSTALL_VALIDATE_SH=1
+
+validate_mirror_url() { local u=$1 rest authority host port; [[ $u == https://* ]] || return 1; rest=${u#https://}; [[ $rest != *'?'* && $rest != *'#'* && $rest != */* ]] || :; authority=${rest%%/*}; [[ $authority && $authority != *@* ]] || return 1; host=$authority; port=''; if [[ $authority == *:* ]]; then host=${authority%%:*}; port=${authority##*:}; [[ $port =~ ^[0-9]+$ ]] || return 1; (( port>=1 && port<=65535 )) || return 1; fi; [[ ${#host} -le 253 && $host =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$ ]] || return 1; local label; IFS=. read -ra _labels <<< "$host"; for label in "${_labels[@]}"; do (( ${#label} <= 63 )) || return 1; done; return 0; }
+validate_ssh_key() { [[ $1 =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-[^[:space:]]+)[[:space:]]+[^[:space:]]+([[:space:]]+.*)?$ ]]; }
+prompt_passphrase() { local p1 p2; if [[ -n ${LUKS_PASSPHRASE:-} ]]; then ((${#LUKS_PASSPHRASE}>=8)) || die "passphrase must be at least 8 characters"; return; fi; while :; do read -rsp 'LUKS passphrase: ' p1; echo; read -rsp 'Confirm: ' p2; echo; [[ $p1 == "$p2" && ${#p1} -ge 8 ]] && { LUKS_PASSPHRASE=$p1; return; }; echo 'Passphrases must match and be at least 8 characters.' >&2; done; }
+prompt_or_require_config() { local k v; if [[ ${ASSUME_YES,,} == yes ]]; then [[ -n $TARGET_DISK && -n $PRIMARY_IFACE && -n $IPV4_ADDR && -n $NETMASK && -n $GATEWAY && -n $DNS_SERVERS && -n $ADMIN_SSH_PUBKEY$ADMIN_SSH_PUBKEY_FILE ]] || die 'required configuration is missing'; else for k in TARGET_DISK PRIMARY_IFACE IPV4_ADDR NETMASK GATEWAY DNS_SERVERS ADMIN_USER BOOT_MODE; do v=${!k}; read -rp "$k [$v]: " value; [[ -n $value ]] && printf -v "$k" '%s' "$value"; done; fi; collect_ssh_keys; prompt_passphrase; }
