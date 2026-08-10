@@ -114,6 +114,26 @@ printf '\x01\x02' > "$vdir/early/kernel/x86/microcode/fake.bin"
 ( cd "$vdir/root" && find . | cpio -o -H newc 2>/dev/null ) >> "$vdir/concat"
 gzip -1 -c "$vdir/concat" > "$vdir/concat.gz"
 verify_initrd_content "$vdir/concat.gz" || { echo 'verify_initrd_content rejected init in member 2'; exit 1; }
+# 4-aligned concatenation (dracut-style, no 512 padding between members)
+( cd "$vdir/early" && find . | cpio -o -H newc 2>/dev/null ) > "$vdir/concat4"
+trailer_end=$(python3 -c '
+import sys
+d = open(sys.argv[1], "rb").read()
+i = d.rfind(b"070701")
+while i >= 0:
+    nlen = int(d[i+94:i+102], 16)
+    name = d[i+110:i+110+nlen].rstrip(b"\x00")
+    if name == b"TRAILER!!!":
+        i = i + 110 + nlen
+        i = (i + 3) & ~3
+        print(i)
+        break
+    i = d.rfind(b"070701", 0, i)
+' "$vdir/concat4")
+head -c "$trailer_end" "$vdir/concat4" > "$vdir/concat4a"
+( cd "$vdir/root" && find . | cpio -o -H newc 2>/dev/null ) >> "$vdir/concat4a"
+gzip -1 -c "$vdir/concat4a" > "$vdir/concat4.gz"
+verify_initrd_content "$vdir/concat4.gz" || { echo 'verify_initrd_content rejected 4-aligned concatenation'; exit 1; }
 # non-executable /init must be rejected
 cp -a "$vdir/root/init" "$vdir/root/init.nox"; chmod 644 "$vdir/root/init.nox"
 ( cd "$vdir/root" && mv init.nox init && find . | cpio -o -H newc 2>/dev/null | gzip -1 ) > "$vdir/nox.gz"

@@ -495,24 +495,41 @@ normalize_initrd_to_gzip() {  # $1 = source, $2 = dest
 # containing an executable /init. GNU cpio -t stops at the first TRAILER!!!
 # (it cannot list the second member of a concatenated archive — Debian images
 # prepend an early-microcode member), so this walks ALL members with a small
-# python3 parser — the same way the kernel unpacks them. Catches a broken
-# engine archive at build time, before the reboot.
+# python3 parser that mirrors the kernel: namesize includes the NUL, entries
+# are 4-byte aligned on the cumulative offset, and after TRAILER!!! the next
+# member is tried at both 4-alignment (dracut-style) and the 512-byte block
+# boundary (cpio). Trailing zero padding ends the walk. On failure, prints
+# what it saw to stderr for diagnosis. Catches a broken engine archive at
+# build time, before the reboot.
 verify_initrd_content() {  # $1 = gzip-compressed initrd
     zcat "$1" 2>/dev/null | python3 -c '
 import sys
 data = sys.stdin.buffer.read()
 i, n = 0, len(data)
+count = 0
+seen = []
+err = None
 while i + 110 <= n:
     if data[i:i+6] != b"070701":
-        sys.exit(2)  # not newc at this offset: corrupt archive
+        err = "bad magic at offset %d: %r" % (i, data[i:i+6])
+        break
     hdr = data[i:i+110]
     nlen = int(hdr[94:102], 16)
     name = data[i+110:i+110+nlen].rstrip(b"\x00").decode("utf-8", "replace")
+    count += 1
+    if len(seen) < 5:
+        seen.append(name)
     if name == "TRAILER!!!":
-        # GNU cpio pads archives to 512-byte block boundaries; a
-        # concatenated member starts at the next 512 boundary.
         i += 110 + nlen
-        i = (i + 511) & ~511
+        j = (i + 3) & ~3   # 4-aligned (dracut-style concatenation)
+        if j + 6 <= n and data[j:j+6] == b"070701":
+            i = j
+        else:
+            k = (i + 511) & ~511  # 512-byte block (cpio concatenation)
+            if k + 6 <= n and data[k:k+6] == b"070701":
+                i = k
+            else:
+                i = n  # trailing zero padding: no more members
         continue
     if name in ("init", "./init") and int(hdr[14:22], 16) & 0o111:
         sys.exit(0)  # /init present and executable
@@ -520,7 +537,11 @@ while i + 110 <= n:
     i = (i + 3) & ~3
     i += int(hdr[54:62], 16)
     i = (i + 3) & ~3
-sys.exit(1)  # parseable but no executable /init found
+if err:
+    print("initrd check failed: %s after %d entries (first: %r)" % (err, count, seen), file=sys.stderr)
+    sys.exit(2)
+print("initrd check failed: no executable /init among %d entries (first: %r)" % (count, seen), file=sys.stderr)
+sys.exit(1)
 '
 }
 
