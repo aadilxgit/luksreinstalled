@@ -447,16 +447,28 @@ EOF
     chmod 755 "$hook"
 }
 
+# Pure: locate the host kernel+initrd for a version. Debian keeps the real
+# files in /boot and only sometimes exposes /vmlinuz symlinks, so /boot is
+# checked first. $2/$3 allow tests to substitute directories.
+resolve_host_kernel() {  # $1 = kver, $2 = boot dir (default /boot), $3 = root dir (default /)
+    local kver=$1 bootdir=${2:-/boot} rootdir=${3:-/} l i
+    for l in "$bootdir/vmlinuz-$kver" "$rootdir/vmlinuz-$kver"; do [[ -f $l ]] && break; done
+    for i in "$bootdir/initrd.img-$kver" "$rootdir/initrd.img-$kver"; do [[ -f $i ]] && break; done
+    [[ -f $l && -f $i ]] || return 1
+    printf '%s %s\n' "$l" "$i"
+}
+
 # Builds the engine kernel+initrd pair into $WORKDIR/linux and
 # $WORKDIR/initrd.preseed.gz (same staging paths the installer method uses,
 # so stage_boot_entry / cancel_handoff work unchanged).
 build_debootstrap_initramfs() {
     : "${WORKDIR:?}"
     [[ -n ${NIC_MODULE:-} ]] || die "NIC_MODULE not detected"
-    local kver hook
+    local kver hook linux_src initrd_src pair
     kver=$(ls -1 /lib/modules 2>/dev/null | sort -V | tail -n1)
     [[ -n $kver ]] || die "no kernels under /lib/modules"
-    [[ -f /vmlinuz-$kver && -f /initrd.img-$kver ]] || die "host kernel files /vmlinuz-$kver /initrd.img-$kver missing"
+    pair=$(resolve_host_kernel "$kver") || die "host kernel files for $kver missing (checked /boot/vmlinuz-$kver, /boot/initrd.img-$kver and their / symlinks)"
+    read -r linux_src initrd_src <<< "$pair"
     detect_boot_grub_facts  # fills BOOT_DEV for STAGE_DEV
     render_engine_env "$WORKDIR/debootstrap.env"
     write_engine_script "$WORKDIR/engine.sh"
@@ -466,7 +478,7 @@ build_debootstrap_initramfs() {
     trap 'rm -f "$hook"' RETURN
     run mkinitramfs -o "$WORKDIR/initrd.preseed.gz" "$kver"
     rm -f "$hook"
-    cp "/vmlinuz-$kver" "$WORKDIR/linux"
+    cp "$linux_src" "$WORKDIR/linux"
     gzip -t "$WORKDIR/initrd.preseed.gz" || die "engine initrd failed gzip integrity check"
     log_info "engine initramfs built: kernel $kver, initrd $(stat -c%s "$WORKDIR/initrd.preseed.gz") bytes"
 }

@@ -58,6 +58,24 @@ cmdl=$(debootstrap_cmdline)
 [[ $cmdl == *'nomodeset console=ttyS0,115200n8 console=tty0 ip=203.0.113.10::203.0.113.1:255.255.255.0::eth0:off' ]] || { echo "debootstrap_cmdline wrong: $cmdl"; exit 1; }
 pass debootstrap_cmdline
 
+# Kernel resolution: real files live under /boot on Debian; / symlinks are optional.
+kdir=$(mktemp -d /tmp/reinstall-kern.XXXXXX)
+bootd="$kdir/boot"; rootd="$kdir/root"; mkdir -p "$bootd" "$rootd"
+# case 1: files in /boot only
+printf x > "$bootd/vmlinuz-6.1.0-test"; printf y > "$bootd/initrd.img-6.1.0-test"
+pair=$(resolve_host_kernel 6.1.0-test "$bootd" "$rootd") || { echo 'resolve_host_kernel failed with /boot files'; exit 1; }
+[[ $pair == "$bootd/vmlinuz-6.1.0-test $bootd/initrd.img-6.1.0-test" ]] || { echo "resolve_host_kernel wrong pair: $pair"; exit 1; }
+# case 2: files at root only (no /boot copy)
+printf x > "$rootd/vmlinuz-6.1.0-test"; printf y > "$rootd/initrd.img-6.1.0-test"
+rm -f "$bootd/vmlinuz-6.1.0-test" "$bootd/initrd.img-6.1.0-test"
+pair=$(resolve_host_kernel 6.1.0-test "$bootd" "$rootd") || { echo 'resolve_host_kernel failed with root files'; exit 1; }
+[[ $pair == "$rootd/vmlinuz-6.1.0-test $rootd/initrd.img-6.1.0-test" ]] || { echo "resolve_host_kernel root pair wrong: $pair"; exit 1; }
+# case 3: neither location
+rm -f "$rootd/vmlinuz-6.1.0-test" "$rootd/initrd.img-6.1.0-test"
+resolve_host_kernel 6.1.0-test "$bootd" "$rootd" && { echo 'resolve_host_kernel accepted missing files'; exit 1; } || true
+rm -rf "$kdir"
+pass resolve_host_kernel
+
 # Engine script: static, POSIX-safe, self-halting on failure, no set -e.
 eng=$(mktemp /tmp/reinstall-engine.XXXXXX)
 write_engine_script "$eng"
