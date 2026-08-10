@@ -14,7 +14,7 @@ TTTTT  H   H  EEEEE        H   H   OOO   RRRR   SSSS  EEEEE
                          sends his reguards
 BANNER
 # shellcheck disable=SC2034  # ASSUME_YES is consumed by lib/handoff.sh confirm_handoff and lib/validate.sh, sourced dynamically above
-while (($#)); do case $1 in --dry-run) DRY_RUN=yes;; --config) CONFIG_FILE=$2; shift;; --verbose|-v) LOG_LEVEL=DEBUG;; --log-file) LOG_FILE=$2; shift;; --assume-yes) ASSUME_YES=yes;; --cancel) CANCEL=yes;; -h|--help) echo "Usage: reinstall.sh [--dry-run] [--config FILE] [--verbose] [--log-file PATH] [--assume-yes] [--cancel]"; exit 0;; esac; shift; done
+while (($#)); do case $1 in --dry-run) DRY_RUN=yes;; --config) CONFIG_FILE=$2; shift;; --verbose|-v) LOG_LEVEL=DEBUG; config_pin LOG_LEVEL;; --log-file) LOG_FILE=$2; shift; config_pin LOG_FILE;; --assume-yes) ASSUME_YES=yes; config_pin ASSUME_YES;; --cancel) CANCEL=yes;; -h|--help) echo "Usage: reinstall.sh [--dry-run] [--config FILE] [--verbose] [--log-file PATH] [--assume-yes] [--cancel]"; exit 0;; esac; shift; done
 LOG_FILE="${LOG_FILE:-/tmp/reinstall-$(date -u +%Y%m%d-%H%M%S).log}"
 init_logging "$@"
 if [[ ${CANCEL:-no} == yes ]]; then require_root; cancel_handoff; exit 0; fi

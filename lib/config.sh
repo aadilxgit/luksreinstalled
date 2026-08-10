@@ -6,6 +6,11 @@ _REINSTALL_CONFIG_SH=1
 
 CONFIG_KEYS=(DEBIAN_SUITE MIRROR TIMEZONE TARGET_DISK PRIMARY_IFACE IPV4_ADDR NETMASK GATEWAY DNS_SERVERS HOSTNAME DOMAIN BOOT_MODE NIC_MODULE ADMIN_USER ADMIN_SSH_PUBKEY ADMIN_SSH_PUBKEY_FILE ADMIN_PASSWORD_HASH SSH_PORT DROPBEAR_PORT WEB_PORTS BOOT_SIZE_MB SWAP_SIZE_MB LUKS_PASSPHRASE ASSUME_YES WORKDIR LOG_FILE LOG_LEVEL)
 declare -A CONFIG_ENV_SET=()
+# Keys set by command-line flags (--log-file, --verbose, --assume-yes) are pinned
+# here so a config file can never override them — a blank LOG_FILE="" in the
+# example config used to wipe the CLI log path, breaking every later log write.
+declare -A CONFIG_CLI_SET=()
+config_pin() { local k; for k in "$@"; do CONFIG_CLI_SET[$k]=1; done; }
 # Record which keys arrived via the real process environment BEFORE the defaults below run
 # (those defaults would otherwise make every key look "already set" and a config file could
 # never override anything — this must happen first, once, as this file is sourced). Checking
@@ -38,7 +43,12 @@ load_config_file() {
     elif [[ ${value:0:1} == "'" ]]; then value="${value#\'}"; value="${value%%\'*}"
     else value="${value%%#*}"; value="${value%"${value##*[![:space:]]}"}"; fi
     config_key_allowed "$key" || { _config_warn "unknown config key ignored: $key"; continue; }
-    [[ ${CONFIG_ENV_SET[$key]:-0} == 1 ]] || printf -v "$key" '%s' "$value"
+    # Never let a config file override command-line flags or exported env vars.
+    [[ ${CONFIG_ENV_SET[$key]:-0} == 1 || ${CONFIG_CLI_SET[$key]:-0} == 1 ]] && continue
+    # Blank config values mean "auto-detect / use default"; they must not blank
+    # out a value already set (e.g. LOG_FILE="" must not erase the log path).
+    [[ -z $value && -n ${!key} ]] && continue
+    printf -v "$key" '%s' "$value"
   done < "$file"
 }
 

@@ -22,3 +22,13 @@ entry_boot=$(render_boot_entry 'auto=true console=ttyS0,115200n8 console=tty0 --
 [[ $entry_boot == *'linux /boot/reinstall/linux auto=true console=ttyS0,115200n8 console=tty0 ---'* ]] || { echo 'render_boot_entry (/boot prefix) missing linux line'; exit 1; }
 [[ $entry_boot == *'initrd /boot/reinstall/initrd.preseed.gz'* ]] || { echo 'render_boot_entry (/boot prefix) missing initrd line'; exit 1; }
 pass render_boot_entry_boot
+# Config file must not clobber command-line flags (the LOG_FILE="" wipe bug).
+LOG_FILE=/tmp/reinstall.log; ASSUME_YES=yes; config_pin LOG_FILE ASSUME_YES
+load_config_file "$root/reinstall.conf.example"
+[[ $LOG_FILE == /tmp/reinstall.log && $ASSUME_YES == yes ]] || { echo 'config file overrode pinned CLI values'; exit 1; }
+pass config_pin_cli
+# Blank config values must not blank out values set outside the file.
+LOG_FILE=/tmp/keep.log; WORKDIR=/tmp/keep.work
+load_config_file "$root/reinstall.conf.example"
+[[ $LOG_FILE == /tmp/keep.log && $WORKDIR == /tmp/keep.work ]] || { echo 'blank config values clobbered runtime vars'; exit 1; }
+pass config_blank_no_clobber

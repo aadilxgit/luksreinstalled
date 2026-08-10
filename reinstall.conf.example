@@ -2,7 +2,7 @@
 # reinstall.conf — copy to reinstall.conf and edit. All values optional;
 # blank network/disk fields are auto-detected. Auto-loaded from ./reinstall.conf
 # or /etc/reinstall.conf, or via --config FILE. Unknown keys are ignored.
-# Precedence: interactive prompt > environment > config file > detection > defaults.
+# Precedence: command line > interactive prompt > environment > config file > detection > defaults.
 # This tool uses Bash arrays and is not POSIX sh.
 DEBIAN_SUITE="trixie"
 MIRROR="https://deb.debian.org/debian"

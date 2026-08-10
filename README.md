@@ -78,11 +78,12 @@ ADMIN_SSH_PUBKEY="ssh-ed25519 AAAA... operator"
 
 Configuration precedence is:
 
-1. Interactive confirmation and edits.
-2. Environment variables.
-3. Explicit or auto-loaded configuration file.
-4. Hardware and network detection.
-5. Built-in defaults.
+1. Command-line flags.
+2. Interactive confirmation and edits.
+3. Exported environment variables.
+4. Explicit or auto-loaded configuration file (blank values never override an already-set value).
+5. Hardware and network detection.
+6. Built-in defaults.
 
 The tool searches `--config FILE`, `$REINSTALL_CONF`, `./reinstall.conf`, and `/etc/reinstall.conf`. Configuration is parsed as allowlisted `KEY=VALUE` data; it is never sourced as shell code.
 
