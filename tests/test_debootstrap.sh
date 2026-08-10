@@ -148,7 +148,7 @@ printf 'ENV=1\n' > "$WORKDIR/debootstrap.env"
 write_watchdog_pet_hook "$WORKDIR/payload"
 tree=$(mktemp -d /tmp/reinstall-eng-tree.XXXXXX)
 inject_engine_into_tree "$tree" || { echo 'inject_engine_into_tree failed'; exit 1; }
-[[ -x "$tree/scripts/init-bottom/zz-reinstall-engine" ]] || { echo 'engine not injected/executable'; exit 1; }
+[[ -x "$tree/scripts/init-premount/zz-reinstall-engine" ]] || { echo 'engine not injected/executable'; exit 1; }
 [[ -x "$tree/scripts/init-top/zz-watchdog-pet" ]] || { echo 'watchdog hook not injected/executable'; exit 1; }
 [[ -f "$tree/etc/reinstall-debootstrap.env" && "$(stat -c %a "$tree/etc/reinstall-debootstrap.env")" == 600 ]] || { echo 'env not injected with 600'; exit 1; }
 [[ -f "$tree/etc/reinstall-payload/postinstall.sh" && "$(stat -c %a "$tree/etc/reinstall-payload/postinstall.sh")" == 700 ]] || { echo 'postinstall.sh not injected with 700'; exit 1; }

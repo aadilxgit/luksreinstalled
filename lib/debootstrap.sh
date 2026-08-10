@@ -398,13 +398,13 @@ inject_engine_into_tree() {  # $1 = initrd tree
     [[ -x $WORKDIR/engine.sh && -s $WORKDIR/debootstrap.env ]] || return 1
     [[ -s $WORKDIR/payload/opt/reinstall/postinstall.sh && -s $WORKDIR/payload/opt/reinstall/secrets.env ]] || return 1
     [[ -s $WORKDIR/payload/scripts/init-top/zz-watchdog-pet ]] || return 1
-    mkdir -p "$tree/scripts/init-bottom" "$tree/scripts/init-top" "$tree/etc/reinstall-payload"
-    cp "$WORKDIR/engine.sh" "$tree/scripts/init-bottom/zz-reinstall-engine"
+    mkdir -p "$tree/scripts/init-premount" "$tree/scripts/init-top" "$tree/etc/reinstall-payload"
+    cp "$WORKDIR/engine.sh" "$tree/scripts/init-premount/zz-reinstall-engine"
     cp "$WORKDIR/debootstrap.env" "$tree/etc/reinstall-debootstrap.env"
     cp "$WORKDIR/payload/opt/reinstall/postinstall.sh" "$tree/etc/reinstall-payload/postinstall.sh"
     cp "$WORKDIR/payload/opt/reinstall/secrets.env" "$tree/etc/reinstall-payload/secrets.env"
     cp "$WORKDIR/payload/scripts/init-top/zz-watchdog-pet" "$tree/scripts/init-top/zz-watchdog-pet"
-    chmod 755 "$tree/scripts/init-bottom/zz-reinstall-engine" "$tree/scripts/init-top/zz-watchdog-pet"
+    chmod 755 "$tree/scripts/init-premount/zz-reinstall-engine" "$tree/scripts/init-top/zz-watchdog-pet"
     chmod 700 "$tree/etc/reinstall-payload/postinstall.sh"
     chmod 600 "$tree/etc/reinstall-debootstrap.env" "$tree/etc/reinstall-payload/secrets.env"
 }
@@ -424,12 +424,21 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
         BUSYBOX=${BUSYBOX:-y} RESUME=${RESUME:-} FSTYPE=${FSTYPE:-} \
         CONFDIR=${CONFDIR:-/etc/initramfs-tools} DPKG_ARCH=${DPKG_ARCH:-$(command -v dpkg >/dev/null 2>&1 && dpkg --print-architecture)}
     . /usr/share/initramfs-tools/hook-functions
+    safe_copy() { # $1 = src, $2 = target_dir
+        local src=$1 target_dir=$2
+        if head -c 4 "$src" 2>/dev/null | grep -q $'\x7fELF'; then
+            ( set +o pipefail +e; copy_exec "$src" "$target_dir" ) 2>/dev/null || copy_file binary "$src" "$target_dir" 2>/dev/null || true
+        else
+            copy_file binary "$src" "$target_dir" 2>/dev/null || true
+        fi
+    }
+
     for cmd in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mkfs.ext4 mkswap blkid debootstrap dpkg wget ip; do
         p=$(command -v "$cmd") || die "missing $cmd"
         case $cmd in
-            debootstrap) copy_exec "$p" /usr/sbin/ ;;
-            dpkg|wget)   copy_exec "$p" /usr/bin/ ;;
-            *)           copy_exec "$p" /sbin/ ;;
+            debootstrap) safe_copy "$p" /usr/sbin/ ;;
+            dpkg|wget)   safe_copy "$p" /usr/bin/ ;;
+            *)           safe_copy "$p" /sbin/ ;;
         esac
     done
     mkdir -p "$tree/usr/share/debootstrap" "$tree/etc/dpkg" "$tree/etc/ssl/certs"
