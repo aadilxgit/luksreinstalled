@@ -40,3 +40,19 @@ LOG_FILE=/tmp/keep.log; WORKDIR=/tmp/keep.work
 load_config_file "$root/reinstall.conf.example"
 [[ $LOG_FILE == /tmp/keep.log && $WORKDIR == /tmp/keep.work ]] || { echo 'blank config values clobbered runtime vars'; exit 1; }
 pass config_blank_no_clobber
+# Full payload assembly: artifacts are written straight into the payload tree
+# by build_postinstall_artifacts; build_payload must not self-copy and must
+# append a cpio containing every required file.
+if command -v cpio >/dev/null && command -v gzip >/dev/null && command -v zcat >/dev/null; then
+  WORKDIR=$(mktemp -d /tmp/reinstall-test.XXXXXX)
+  printf 'd-i test\n' > "$WORKDIR/preseed.cfg"
+  printf 'x' | gzip > "$WORKDIR/initrd.gz"
+  TMPPW=tmpkey; LUKS_PASSPHRASE=testpass123; ADMIN_USER=cain; ADMIN_PUBKEYS='ssh-ed25519 AAA x'; SSH_PORT=2222; DROPBEAR_PORT=22; WEB_PORTS='80 443'; NIC_MODULE=ixgbe; ADMIN_PASSWORD_HASH='$6$x$y'
+  build_postinstall_artifacts "$TMPPW"
+  build_payload
+  [[ -s "$WORKDIR/initrd.preseed.gz" && "$(stat -c %s "$WORKDIR/initrd.preseed.gz")" -gt "$(stat -c %s "$WORKDIR/initrd.gz")" ]] || { echo 'payload append failed'; exit 1; }
+  pass payload_build
+  rm -rf "$WORKDIR"
+else
+  echo 'SKIP payload_build (cpio/gzip/zcat missing)'
+fi
