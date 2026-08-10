@@ -26,6 +26,10 @@ BOOT_MODE=bios; [[ $(render_partition_tree) == *'[biosgrub 1M]'* && $(render_par
 pass render_partition_tree_bios
 BOOT_MODE=uefi; [[ $(render_partition_tree) == *'[ESP 538–1075M]'* ]] || { echo 'render_partition_tree (uefi) missing ESP'; exit 1; }
 pass render_partition_tree_uefi
+# A suppressed (below-LOG_LEVEL) message must never fail under errexit — the
+# [[ ]] inside _log used to leak status 1 through log_debug -> run() and killed
+# the script on the first real download step.
+LOG_FILE=/tmp/reinstall-test.log; : >"$LOG_FILE"; LOG_LEVEL=INFO; log_debug "suppressed debug message"; pass log_debug_suppressed
 # Config file must not clobber command-line flags (the LOG_FILE="" wipe bug).
 LOG_FILE=/tmp/reinstall.log; ASSUME_YES=yes; config_pin LOG_FILE ASSUME_YES
 load_config_file "$root/reinstall.conf.example"
