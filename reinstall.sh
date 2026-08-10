@@ -15,7 +15,7 @@ TTTTT  H   H  EEEEE        H   H   OOO   RRRR   SSSS  EEEEE
 BANNER
 # shellcheck disable=SC2034  # ASSUME_YES is consumed by lib/handoff.sh confirm_handoff and lib/validate.sh, sourced dynamically above
 while (($#)); do case $1 in --dry-run) DRY_RUN=yes;; --method) METHOD=${2:?--method needs a value (installer|debootstrap)}; shift;; --config) CONFIG_FILE=${2:?--config needs a path}; shift;; --verbose|-v) LOG_LEVEL=DEBUG; config_pin LOG_LEVEL;; --log-file) LOG_FILE=${2:?--log-file needs a path}; shift; config_pin LOG_FILE;; --assume-yes) ASSUME_YES=yes; config_pin ASSUME_YES;; --cancel) CANCEL=yes;; -h|--help) echo "Usage: reinstall.sh [--dry-run] [--method installer|debootstrap] [--config FILE] [--verbose] [--log-file PATH] [--assume-yes] [--cancel]"; exit 0;; esac; shift; done
-METHOD=${METHOD:-installer}
+METHOD=${METHOD:-debootstrap}
 case $METHOD in installer|debootstrap) ;; *) die "unknown --method: $METHOD (expected installer or debootstrap)";; esac
 LOG_FILE="${LOG_FILE:-/tmp/reinstall-$(date -u +%Y%m%d-%H%M%S).log}"
 init_logging "$@"

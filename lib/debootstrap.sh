@@ -220,6 +220,14 @@ main() {
 
 
     # --- network (the ip= cmdline normally did this; verify, else manual) ---
+    if [ ! -d "/sys/class/net/$IFACE" ]; then
+        actual_if=$(ip -o link 2>/dev/null | awk -F': ' '$2 != "lo" {print $2; exit}' | cut -d'@' -f1)
+        if [ -n "$actual_if" ]; then
+            log "configured interface $IFACE not found; auto-switched to $actual_if"
+            INTERFACES=$(printf '%s\n' "$INTERFACES" | sed "s/$IFACE/$actual_if/g")
+            IFACE="$actual_if"
+        fi
+    fi
     if ! ip -4 addr show dev "$IFACE" 2>/dev/null | grep -q 'inet '; then
         ip link set "$IFACE" up || fail "cannot bring up $IFACE"
         ip addr add "$IPV4/$NETMASK_PREFIX" dev "$IFACE" 2>/dev/null || true
