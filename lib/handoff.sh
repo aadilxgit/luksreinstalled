@@ -18,7 +18,12 @@ build_cmdline() {
     : "${DNS_SERVERS:?DNS_SERVERS is required}"
     : "${HOSTNAME:?HOSTNAME is required}"
     : "${DOMAIN:?DOMAIN is required}"
-    CMDLINE="auto=true priority=critical DEBIAN_FRONTEND=text locale=en_US.UTF-8 keymap=us interface=$PRIMARY_IFACE netcfg/disable_autoconfig=true netcfg/get_ipaddress=$IPV4_ADDR netcfg/get_netmask=$NETMASK netcfg/get_gateway=$GATEWAY netcfg/get_nameservers=$DNS_SERVERS netcfg/confirm_static=true netcfg/get_hostname=$HOSTNAME netcfg/get_domain=$DOMAIN preseed/file=/preseed.cfg console=ttyS0,115200n8 console=tty0 ---"
+    # nomodeset: keep the installer on the VGA text console (vgacon). Without it,
+    # bochs-drm switches the display to the framebuffer at boot and the KVM/VNC
+    # console freezes on that switch — the installer then runs (or stalls)
+    # invisibly. The VGA text console renders on every provider's VNC panel; serial
+    # stays armed (listed first) for providers that expose one.
+    CMDLINE="auto=true priority=critical DEBIAN_FRONTEND=text locale=en_US.UTF-8 keymap=us interface=$PRIMARY_IFACE netcfg/disable_autoconfig=true netcfg/get_ipaddress=$IPV4_ADDR netcfg/get_netmask=$NETMASK netcfg/get_gateway=$GATEWAY netcfg/get_nameservers=$DNS_SERVERS netcfg/confirm_static=true netcfg/get_hostname=$HOSTNAME netcfg/get_domain=$DOMAIN preseed/file=/preseed.cfg nomodeset console=ttyS0,115200n8 console=tty0 ---"
     printf '%s\n' "$CMDLINE"
 }
 

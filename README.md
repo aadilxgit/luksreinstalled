@@ -43,13 +43,13 @@ The running system must be:
 Host commands required before the destructive phase include `wget`, `cpio`, `gzip`, `zcat`, `sha256sum`, `awk`, `ip`, `lsblk`, `findmnt`, `blkid`, `openssl`, `systemd-detect-virt`, `mountpoint`, `update-grub`, `grub-reboot`, `grub-editenv`, and `reboot`.
 ### KVM VPS console
 
-The installer command line makes the VGA/VNC console primary for KVM guests:
+The staged installer boots with `nomodeset`, so the display never leaves VGA text mode — the bochs-drm driver does not switch the console to the framebuffer, and the web/VNC console keeps rendering installer output instead of freezing on the framebuffer switch:
 
 ```text
-console=ttyS0,115200n8 console=tty0 ---
+... preseed/file=/preseed.cfg nomodeset console=ttyS0,115200n8 console=tty0 ---
 ```
 
-The last `console=` controls `/dev/console`, so installer text and debconf output appear on the VPS web/VNC console (serial is also active, listed first). Because the tool reboots through the hypervisor into the installer kernel — instead of jumping directly into it — the platform and its virtual devices are reset before that kernel starts. The `bochs-drmfb` kernel message is informational and does not precede a hang; if the web/VNC console still stops updating, connect to the provider's serial console before interrupting the install.
+The last `console=` controls `/dev/console`, so installer text and debconf output appear on the VPS web/VNC console (serial is also active, listed first, for providers that expose it). If the web/VNC console stops updating mid-install, it is a real hang — capture the last line on the console before interrupting, and keep in mind the disk is only erased once partman actually writes the partition table. If the guest later reboots back into the original system with the disk untouched, the installer stalled before partman; retry from the tool (the staging is idempotent) rather than power-cycling mid-install.
 
 
 ## Configure
@@ -234,7 +234,10 @@ bash tests/test_validate.sh
 bash tests/run.sh
 ```
 
-Never run `update-grub`, `grub-reboot`, `grub-editenv`, or `reboot` as ad-hoc verification commands, and never write to `/etc/grub.d` or `/boot` outside the tool itself. Use the dry run and provider console to validate configuration before the final confirmation. If the guest reboots back into the original system instead of the staged installer, check the log for the `grub-editenv ... list` output captured right after arming — a missing `next_entry=debian-luks-reinstall` means the `grub-reboot` argument did not match the menu entry's `--id`.
+Never run `update-grub`, `grub-reboot`, `grub-editenv`, or `reboot` as ad-hoc verification commands, and never write to `/etc/grub.d` or `/boot` outside the tool itself. Use the dry run and provider console to validate configuration before the final confirmation. If the guest reboots back into the original system instead of the staged installer, check `grub-editenv /boot/grub/grubenv list`:
+
+- `next_entry=debian-luks-reinstall` still set — the reboot never went through GRUB; the `grub-reboot` arm did not stick.
+- `next_entry=` (empty) — GRUB consumed the entry and booted the installer kernel; the installer stalled before writing the disk. The old system is intact and the retry is safe; use the provider console to capture the last visible line.
 
 ## Recovery
 
