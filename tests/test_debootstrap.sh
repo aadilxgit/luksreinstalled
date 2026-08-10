@@ -76,6 +76,27 @@ resolve_host_kernel 6.1.0-test "$bootd" "$rootd" && { echo 'resolve_host_kernel 
 rm -rf "$kdir"
 pass resolve_host_kernel
 
+# Initrd normalization: the host's COMPRESS setting must not leak into the
+# staged initrd — always gzip, always verified.
+nidir=$(mktemp -d /tmp/reinstall-initrd.XXXXXX)
+head -c 262144 /dev/urandom > "$nidir/rand"
+gzip -c "$nidir/rand" > "$nidir/in.gz"
+normalize_initrd_to_gzip "$nidir/in.gz" "$nidir/out.gz" || { echo 'normalize failed on gzip input'; exit 1; }
+gzip -t "$nidir/out.gz" || { echo 'normalized output is not gzip'; exit 1; }
+if command -v zstd >/dev/null 2>&1; then
+    zstd -q -c "$nidir/rand" > "$nidir/in.zst"
+    normalize_initrd_to_gzip "$nidir/in.zst" "$nidir/out2.gz" || { echo 'normalize failed on zstd input'; exit 1; }
+    gzip -t "$nidir/out2.gz" || { echo 'zstd-normalized output is not gzip'; exit 1; }
+fi
+printf '070701' > "$nidir/in.plain"; head -c 4096 /dev/zero >> "$nidir/in.plain"
+normalize_initrd_to_gzip "$nidir/in.plain" "$nidir/out3.gz" || { echo 'normalize failed on plain cpio'; exit 1; }
+gzip -t "$nidir/out3.gz" || { echo 'cpio-normalized output is not gzip'; exit 1; }
+head -c 64 "$nidir/in.gz" > "$nidir/in.trunc"
+normalize_initrd_to_gzip "$nidir/in.trunc" "$nidir/out4.gz" && { echo 'normalize accepted truncated gzip'; exit 1; } || true
+[[ -e "$nidir/out4.gz" ]] && { echo 'normalize left a partial output behind'; exit 1; }
+rm -rf "$nidir"
+pass normalize_initrd_to_gzip
+
 # Engine script: static, POSIX-safe, self-halting on failure, no set -e.
 eng=$(mktemp /tmp/reinstall-engine.XXXXXX)
 write_engine_script "$eng"

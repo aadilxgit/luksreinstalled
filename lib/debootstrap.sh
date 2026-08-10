@@ -162,6 +162,7 @@ debootstrap_preflight() {
     for pkg in "${DEBOOTSTRAP_APT_PKGS[@]}"; do
         case $pkg in
             cryptsetup-bin) cmd=cryptsetup ;;
+            lvm2) cmd=lvm ;;
             *) cmd=$pkg ;;
         esac
         command -v "$cmd" >/dev/null 2>&1 || missing+=("$pkg")
@@ -458,6 +459,37 @@ resolve_host_kernel() {  # $1 = kver, $2 = boot dir (default /boot), $3 = root d
     printf '%s %s\n' "$l" "$i"
 }
 
+# The host's initramfs-tools may compress with zstd/xz/lz4/bzip2 or not at
+# all (COMPRESS= in /etc/initramfs-tools/initramfs.conf), and GRUB on older
+# hosts cannot load all of those (notably lz4). The staged initrd is always
+# recompressed to gzip so any GRUB's gzio module can load it. Source
+# integrity is verified with the matching checker first. Returns 1 with a
+# message on stderr on any failure; never leaves a partial $2 behind.
+normalize_initrd_to_gzip() {  # $1 = source, $2 = dest
+    local src=$1 dst=$2 magic tool
+    magic=$(head -c 6 "$src" | od -An -tx1 | tr -d ' \n')
+    case $magic in
+        1f8b*)        tool=gzip ;;
+        28b52ffd*)    tool=zstd ;;
+        fd377a585a00) tool=xz ;;
+        425a68*)      tool=bzip2 ;;
+        04224d18*)    tool=lz4 ;;
+        894c5a4f*)    tool=lzop ;;
+        30373037*)    tool=cat ;;  # uncompressed newc cpio
+        *) echo "initrd: unrecognized compression magic ($magic) in $src" >&2; return 1 ;;
+    esac
+    if [[ $tool != cat ]]; then
+        command -v "$tool" >/dev/null 2>&1 || { echo "initrd: $src is $tool-compressed but $tool is not installed" >&2; return 1; }
+        "$tool" -t "$src" 2>/dev/null || { echo "initrd: $src failed $tool integrity check" >&2; return 1; }
+    fi
+    if [[ $tool == cat ]]; then
+        cat "$src" | gzip -1 > "$dst"
+    else
+        "$tool" -cd "$src" 2>/dev/null | gzip -1 > "$dst"
+    fi || { echo "initrd: decompression of $src failed" >&2; rm -f "$dst"; return 1; }
+    gzip -t "$dst" 2>/dev/null || { echo "initrd: gzip recompression of $src failed" >&2; rm -f "$dst"; return 1; }
+}
+
 # Builds the engine kernel+initrd pair into $WORKDIR/linux and
 # $WORKDIR/initrd.preseed.gz (same staging paths the installer method uses,
 # so stage_boot_entry / cancel_handoff work unchanged).
@@ -476,10 +508,12 @@ build_debootstrap_initramfs() {
     hook=/etc/initramfs-tools/hooks/zz-reinstall-engine
     write_initramfs_hook "$hook"
     trap 'rm -f "$hook"' RETURN
-    run mkinitramfs -o "$WORKDIR/initrd.preseed.gz" "$kver"
+    run mkinitramfs -o "$WORKDIR/initrd.tmp" "$kver"
     rm -f "$hook"
     cp "$linux_src" "$WORKDIR/linux"
-    gzip -t "$WORKDIR/initrd.preseed.gz" || die "engine initrd failed gzip integrity check"
+    normalize_initrd_to_gzip "$WORKDIR/initrd.tmp" "$WORKDIR/initrd.preseed.gz" \
+        || die "engine initrd failed integrity check"
+    rm -f "$WORKDIR/initrd.tmp"
     log_info "engine initramfs built: kernel $kver, initrd $(stat -c%s "$WORKDIR/initrd.preseed.gz") bytes"
 }
 
