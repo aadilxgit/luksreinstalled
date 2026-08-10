@@ -416,8 +416,14 @@ inject_engine_into_tree() {  # $1 = initrd tree
 # them) and refreshes modules.dep so modprobe can find them.
 inject_engine_tools() {  # $1 = tree, $2 = kver
     local tree=$1 kver=$2 cmd p m f rel
-    . /usr/share/initramfs-tools/hook-functions
+    # mkinitramfs exports these before running hooks; hook-functions uses
+    # ${verbose?} (hard error when unset, even without set -u) and friends,
+    # so mirror the exports with safe defaults.
     export DESTDIR=$tree MODULESDIR=/lib/modules/$kver version=$kver
+    export verbose=${verbose:-n} KEYMAP=${KEYMAP:-n} MODULES=${MODULES:-most} \
+        BUSYBOX=${BUSYBOX:-y} RESUME=${RESUME:-} FSTYPE=${FSTYPE:-} \
+        CONFDIR=${CONFDIR:-/etc/initramfs-tools} DPKG_ARCH=${DPKG_ARCH:-$(command -v dpkg >/dev/null 2>&1 && dpkg --print-architecture)}
+    . /usr/share/initramfs-tools/hook-functions
     for cmd in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mkfs.ext4 mkswap blkid debootstrap dpkg wget ip; do
         p=$(command -v "$cmd") || die "missing $cmd"
         case $cmd in
