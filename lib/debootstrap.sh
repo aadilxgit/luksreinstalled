@@ -407,6 +407,20 @@ inject_engine_into_tree() {  # $1 = initrd tree
     chmod 755 "$tree/scripts/init-premount/zz-reinstall-engine" "$tree/scripts/init-top/zz-watchdog-pet"
     chmod 700 "$tree/etc/reinstall-payload/postinstall.sh"
     chmod 600 "$tree/etc/reinstall-debootstrap.env" "$tree/etc/reinstall-payload/secrets.env"
+
+    # initramfs-tools run_scripts sources /scripts/<section>/ORDER.
+    # Register watchdog-pet in init-top/ORDER and engine in init-premount/ORDER.
+    if [ -f "$tree/scripts/init-top/ORDER" ]; then
+        grep -q 'zz-watchdog-pet' "$tree/scripts/init-top/ORDER" 2>/dev/null || printf '/scripts/init-top/zz-watchdog-pet "$@"\n' >> "$tree/scripts/init-top/ORDER"
+    else
+        printf '/scripts/init-top/zz-watchdog-pet "$@"\n' > "$tree/scripts/init-top/ORDER"
+    fi
+
+    if [ -f "$tree/scripts/init-premount/ORDER" ]; then
+        grep -q 'zz-reinstall-engine' "$tree/scripts/init-premount/ORDER" 2>/dev/null || printf '/scripts/init-premount/zz-reinstall-engine "$@"\n' >> "$tree/scripts/init-premount/ORDER"
+    else
+        printf '/scripts/init-premount/zz-reinstall-engine "$@"\n' > "$tree/scripts/init-premount/ORDER"
+    fi
 }
 
 # Embed the engine toolchain into an unpacked initramfs tree using

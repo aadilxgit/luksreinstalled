@@ -150,6 +150,8 @@ tree=$(mktemp -d /tmp/reinstall-eng-tree.XXXXXX)
 inject_engine_into_tree "$tree" || { echo 'inject_engine_into_tree failed'; exit 1; }
 [[ -x "$tree/scripts/init-premount/zz-reinstall-engine" ]] || { echo 'engine not injected/executable'; exit 1; }
 [[ -x "$tree/scripts/init-top/zz-watchdog-pet" ]] || { echo 'watchdog hook not injected/executable'; exit 1; }
+[[ -f "$tree/scripts/init-premount/ORDER" ]] && grep -q 'zz-reinstall-engine' "$tree/scripts/init-premount/ORDER" || { echo 'engine not registered in init-premount/ORDER'; exit 1; }
+[[ -f "$tree/scripts/init-top/ORDER" ]] && grep -q 'zz-watchdog-pet' "$tree/scripts/init-top/ORDER" || { echo 'watchdog pet not registered in init-top/ORDER'; exit 1; }
 [[ -f "$tree/etc/reinstall-debootstrap.env" && "$(stat -c %a "$tree/etc/reinstall-debootstrap.env")" == 600 ]] || { echo 'env not injected with 600'; exit 1; }
 [[ -f "$tree/etc/reinstall-payload/postinstall.sh" && "$(stat -c %a "$tree/etc/reinstall-payload/postinstall.sh")" == 700 ]] || { echo 'postinstall.sh not injected with 700'; exit 1; }
 [[ -f "$tree/etc/reinstall-payload/secrets.env" && "$(stat -c %a "$tree/etc/reinstall-payload/secrets.env")" == 600 ]] || { echo 'secrets.env not injected with 600'; exit 1; }
