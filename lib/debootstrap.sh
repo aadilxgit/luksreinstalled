@@ -17,7 +17,8 @@ _REINSTALL_DEBOOTSTRAP_SH=1
 # are staged under the same /boot/reinstall paths.
 
 # Packages that must exist on the host so the engine initramfs can embed them.
-DEBOOTSTRAP_APT_PKGS=(debootstrap parted cryptsetup-bin lvm2)
+# python3: initrd content verification (verify_initrd_content).
+DEBOOTSTRAP_APT_PKGS=(debootstrap parted cryptsetup-bin lvm2 python3)
 # Packages debootstrap installs inside the new system (mirrors the d-i
 # pkgsel/include list; apt-listchanges omitted — the postinstall worker does
 # not use it).
@@ -171,7 +172,7 @@ debootstrap_preflight() {
         log_warn "host missing engine tools: ${missing[*]}"
         DEBIAN_FRONTEND=noninteractive run apt-get install -y --no-install-recommends "${missing[@]}" || die "failed to install host packages: ${missing[*]}"
     fi
-    for cmd in mkinitramfs debootstrap parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mkfs.ext4 mkswap blkid dpkg wget ip; do
+    for cmd in mkinitramfs debootstrap parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mkfs.ext4 mkswap blkid dpkg wget ip python3; do
         require_cmd "$cmd"
     done
     [[ -d /usr/share/initramfs-tools ]] || die "initramfs-tools is not installed on the host"
@@ -490,12 +491,37 @@ normalize_initrd_to_gzip() {  # $1 = source, $2 = dest
     gzip -t "$dst" 2>/dev/null || { echo "initrd: gzip recompression of $src failed" >&2; rm -f "$dst"; return 1; }
 }
 
-# Content check: the staged initrd must decompress to a parseable cpio that
-# contains /init. Catches a broken engine archive at build time, before the
-# reboot. GNU cpio -t validates the first archive member (which holds /init);
-# it stops at the first TRAILER, which is fine for this check.
+# Content check: the staged initrd must decompress to parseable newc cpio
+# containing an executable /init. GNU cpio -t stops at the first TRAILER!!!
+# (it cannot list the second member of a concatenated archive — Debian images
+# prepend an early-microcode member), so this walks ALL members with a small
+# python3 parser — the same way the kernel unpacks them. Catches a broken
+# engine archive at build time, before the reboot.
 verify_initrd_content() {  # $1 = gzip-compressed initrd
-    zcat "$1" 2>/dev/null | cpio -t 2>/dev/null | grep -qE '(^|/)init$'
+    zcat "$1" 2>/dev/null | python3 -c '
+import sys
+data = sys.stdin.buffer.read()
+i, n = 0, len(data)
+while i + 110 <= n:
+    if data[i:i+6] != b"070701":
+        sys.exit(2)  # not newc at this offset: corrupt archive
+    hdr = data[i:i+110]
+    nlen = int(hdr[94:102], 16)
+    name = data[i+110:i+110+nlen].rstrip(b"\x00").decode("utf-8", "replace")
+    if name == "TRAILER!!!":
+        # GNU cpio pads archives to 512-byte block boundaries; a
+        # concatenated member starts at the next 512 boundary.
+        i += 110 + nlen
+        i = (i + 511) & ~511
+        continue
+    if name in ("init", "./init") and int(hdr[14:22], 16) & 0o111:
+        sys.exit(0)  # /init present and executable
+    i += 110 + nlen
+    i = (i + 3) & ~3
+    i += int(hdr[54:62], 16)
+    i = (i + 3) & ~3
+sys.exit(1)  # parseable but no executable /init found
+'
 }
 
 # Builds the engine kernel+initrd pair into $WORKDIR/linux and

@@ -101,10 +101,23 @@ pass normalize_initrd_to_gzip
 vdir=$(mktemp -d /tmp/reinstall-verify.XXXXXX)
 mkdir -p "$vdir/root"
 printf '#!/bin/sh\nexit 0\n' > "$vdir/root/init"
+chmod 755 "$vdir/root/init"
 ( cd "$vdir/root" && find . | cpio -o -H newc 2>/dev/null | gzip -1 ) > "$vdir/good.gz"
 verify_initrd_content "$vdir/good.gz" || { echo 'verify_initrd_content rejected a valid initrd'; exit 1; }
 printf 'this is not an initramfs\n' | gzip -1 > "$vdir/bad.gz"
 verify_initrd_content "$vdir/bad.gz" && { echo 'verify_initrd_content accepted garbage'; exit 1; } || true
+# concatenated archive (Debian early-cpio style): /init lives in member 2 —
+# GNU cpio -t would stop at member 1's TRAILER, the python walker must not.
+mkdir -p "$vdir/early/kernel/x86/microcode"
+printf '\x01\x02' > "$vdir/early/kernel/x86/microcode/fake.bin"
+( cd "$vdir/early" && find . | cpio -o -H newc 2>/dev/null ) > "$vdir/concat"
+( cd "$vdir/root" && find . | cpio -o -H newc 2>/dev/null ) >> "$vdir/concat"
+gzip -1 -c "$vdir/concat" > "$vdir/concat.gz"
+verify_initrd_content "$vdir/concat.gz" || { echo 'verify_initrd_content rejected init in member 2'; exit 1; }
+# non-executable /init must be rejected
+cp -a "$vdir/root/init" "$vdir/root/init.nox"; chmod 644 "$vdir/root/init.nox"
+( cd "$vdir/root" && mv init.nox init && find . | cpio -o -H newc 2>/dev/null | gzip -1 ) > "$vdir/nox.gz"
+verify_initrd_content "$vdir/nox.gz" && { echo 'verify_initrd_content accepted non-executable init'; exit 1; } || true
 rm -rf "$vdir"
 pass verify_initrd_content
 
