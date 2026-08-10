@@ -131,7 +131,7 @@ write_engine_script "$eng"
 bash -n "$eng" || { echo 'engine script fails bash -n'; exit 1; }
 grep -qE '^[[:space:]]*set -e([[:space:]]|$)' "$eng" && { echo 'engine must not set -e (sourced by init)'; exit 1; }
 grep -q 'while :; do sleep 3600; done' "$eng" || { echo 'engine missing halt loop'; exit 1; }
-for needle in 'cryptsetup luksFormat' 'vg_crypt UUID=%s none luks' 'grub-install' 'reinstall-done' 'debootstrap ' 'luksUUID' 'mount --bind /proc /mnt/proc' 'init-bottom' 'exec tail -n +3 "\$0"' 'Debian LUKS reinstall (retry)'; do
+for needle in 'cryptsetup luksFormat' 'vg_crypt UUID=%s none luks' 'grub-install' 'reinstall-done' 'debootstrap ' 'luksUUID' 'mount --bind /proc /mnt/proc' 'init-premount' 'exec tail -n +3 "\$0"' 'Debian LUKS reinstall (retry)'; do
   grep -qF -- "$needle" "$eng" || { echo "engine missing: $needle"; exit 1; }
 done
 rm -f "$eng"

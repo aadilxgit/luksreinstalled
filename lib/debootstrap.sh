@@ -189,7 +189,7 @@ write_engine_script() {  # $1 = output path
     cat >"$1" <<'ENGINE'
 #!/bin/sh
 # Debian LUKS reinstall engine (debootstrap method). Runs as an initramfs
-# init-bottom hook on the HOST's own kernel — no d-i kernel involved, so the
+# init-premount hook on the HOST's own kernel — no d-i kernel involved, so the
 # intermittent early-boot deadlock of the d-i kernel on some KVM hosts is
 # avoided entirely. Sourced by /init inside a subshell: never exit, never
 # set -e; failures block forever so the console keeps the log visible.
@@ -214,6 +214,10 @@ main() {
     done
     log "start: target=$TARGET_DISK suite=$DEBIAN_SUITE mirror=$MIRROR"
     udevadm settle 2>/dev/null || true
+    modprobe dm-crypt 2>/dev/null || true
+    modprobe dm-mod 2>/dev/null || true
+    modprobe ext4 2>/dev/null || true
+
 
     # --- network (the ip= cmdline normally did this; verify, else manual) ---
     if ! ip -4 addr show dev "$IFACE" 2>/dev/null | grep -q 'inet '; then
@@ -460,12 +464,18 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
     cp -a /usr/share/debootstrap/scripts "$tree/usr/share/debootstrap/"
     cp -a /etc/dpkg/. "$tree/etc/dpkg/"
     cp -a /etc/ssl/certs/ca-certificates.crt "$tree/etc/ssl/certs/" 2>/dev/null || true
-    for m in $NIC_MODULE lpc_ich iTCO_wdt; do
+    for m in $NIC_MODULE lpc_ich iTCO_wdt dm-crypt dm-mod dm-snapshot dm-mirror ext4 aesni_intel xts sha256_generic sha256_ssse3; do
         f=$(modinfo -n "$m" 2>/dev/null) || continue
         case $f in /lib/modules/*) ;; *) continue ;; esac
         rel=${f#/lib/modules/}
         mkdir -p "$tree/lib/modules/$(dirname "$rel")"
         cp -a "$f" "$tree/lib/modules/$rel"
+    done
+    for sub in drivers/md crypto arch/x86/crypto fs/ext4 fs/jbd2 fs/mbcache; do
+        if [ -d "/lib/modules/$kver/kernel/$sub" ]; then
+            mkdir -p "$tree/lib/modules/$kver/kernel/$sub"
+            cp -a "/lib/modules/$kver/kernel/$sub/." "$tree/lib/modules/$kver/kernel/$sub/"
+        fi
     done
     depmod -a -b "$tree" "$kver" 2>/dev/null || true
 }
