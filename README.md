@@ -219,9 +219,13 @@ sshd -T | grep -E '^(port|allowusers|permitrootlogin|passwordauthentication)'
 
 Do not remove or erase LUKS keyslots manually. Use the provider console, inspect `/var/log/vps-postinst.log`, and confirm that the post-install sequence completed add, verify, then remove. The tool uses exact passphrase bytes with `printf '%s'`, without a trailing newline.
 
-### Fail2ban reports no log path
+### `Fail2ban reports no log path`
 
 Debian trixie uses the systemd journal by default. The generated jail sets `backend = systemd` and requires `python3-systemd`; do not add an `/var/log/auth.log` path unless rsyslog is intentionally installed.
+
+### Installer dies or the VM resets shortly after booting
+
+Some providers run QEMU with the default ICH9 chipset, which exposes an emulated TCO watchdog (`iTCO_wdt`) that resets the VM when the guest does not service it — the Debian installer has no petting daemon of its own, so the machine can die mid-install with the disk untouched. Detect it on the current system with `dmesg | grep -i tco` (a line like `iTCO_wdt … heartbeat=30 sec` means it is present). This tool already handles it: the installer payload ships `/scripts/init-top/zz-watchdog-pet` (an initramfs hook that pets the watchdog every 5 s for the entire install), the preseed re-arms it via `preseed/early_command`, and the post-install worker installs the `watchdog` service on the target so the new system keeps petting after boot. No configuration needed.
 
 ## Verification
 

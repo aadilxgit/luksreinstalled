@@ -45,13 +45,22 @@ pass config_blank_no_clobber
 # append a cpio containing every required file.
 if command -v cpio >/dev/null && command -v gzip >/dev/null && command -v zcat >/dev/null; then
   WORKDIR=$(mktemp -d /tmp/reinstall-test.XXXXXX)
-  printf 'd-i test\n' > "$WORKDIR/preseed.cfg"
-  printf 'x' | gzip > "$WORKDIR/initrd.gz"
   TMPPW=tmpkey; LUKS_PASSPHRASE=testpass123; ADMIN_USER=cain; ADMIN_PUBKEYS='ssh-ed25519 AAA x'; SSH_PORT=2222; DROPBEAR_PORT=22; WEB_PORTS='80 443'; NIC_MODULE=ixgbe; ADMIN_PASSWORD_HASH='$6$x$y'
+  MIRROR=https://deb.debian.org/debian; DEBIAN_SUITE=trixie; TARGET_DISK=/dev/vda; TIMEZONE=UTC; PRIMARY_IFACE=eth0; IPV4_ADDR=192.0.2.1; NETMASK=255.255.255.0; GATEWAY=192.0.2.254; DNS_SERVERS='1.1.1.1'; HOSTNAME=debian; DOMAIN=local; BOOT_MODE=bios; BOOT_SIZE_MB=1024; SWAP_SIZE_MB=4096
+  build_preseed "$WORKDIR/preseed.cfg" "$ADMIN_PASSWORD_HASH"
+  grep -q 'preseed/early_command string \[ -x /scripts/init-top/zz-watchdog-pet \] && /scripts/init-top/zz-watchdog-pet' "$WORKDIR/preseed.cfg" || { echo 'preseed missing watchdog early_command'; exit 1; }
+  pass preseed_watchdog_hook
+  printf 'x' | gzip > "$WORKDIR/initrd.gz"
   build_postinstall_artifacts "$TMPPW"
   build_payload
   [[ -s "$WORKDIR/initrd.preseed.gz" && "$(stat -c %s "$WORKDIR/initrd.preseed.gz")" -gt "$(stat -c %s "$WORKDIR/initrd.gz")" ]] || { echo 'payload append failed'; exit 1; }
   pass payload_build
+  # Watchdog hook must ship, be executable, name the driver, and never use the
+  # 'V' magic-close byte that disarms the watchdog.
+  [[ -x "$WORKDIR/payload/scripts/init-top/zz-watchdog-pet" ]] || { echo 'watchdog hook missing or not executable'; exit 1; }
+  grep -q 'iTCO_wdt' "$WORKDIR/payload/scripts/init-top/zz-watchdog-pet" || { echo 'watchdog hook missing iTCO_wdt'; exit 1; }
+  grep -q "printf 'V'" "$WORKDIR/payload/scripts/init-top/zz-watchdog-pet" && { echo 'watchdog hook writes magic-close V'; exit 1; }
+  pass watchdog_hook
   # The final staged initrd must pass gzip integrity across all concatenated
   # members (base initrd + payload): a booted-but-broken initrd stalls the
   # installer with a dead console.

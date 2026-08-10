@@ -27,6 +27,14 @@ mkdir -p /etc/ssh/sshd_config.d; printf 'Port %s\nPermitRootLogin no\nPasswordAu
 systemctl disable --now ssh.socket || true; systemctl enable --now ssh.service || true
 mkdir -p /etc/dropbear/initramfs; : > /etc/dropbear/initramfs/authorized_keys; for key in $DROPBEAR_KEYS; do printf 'restrict,command="/bin/cryptroot-unlock" %s\n' "$key" >>/etc/dropbear/initramfs/authorized_keys; done; chmod 600 /etc/dropbear/initramfs/authorized_keys; printf 'DROPBEAR_OPTIONS="-j -k %s"\n' "${DROPBEAR_PORT:+-p $DROPBEAR_PORT}" >/etc/dropbear/initramfs/dropbear.conf
 printf '%s\n' "$NIC_MODULE" >>/etc/initramfs-tools/modules
+# The provider runs an emulated ICH9 TCO watchdog (iTCO_wdt): the VM is reset
+# when the guest leaves it unserviced, so load the drivers everywhere and run
+# a petting daemon on the installed system.
+printf 'lpc_ich\niTCO_wdt\n' >>/etc/initramfs-tools/modules
+printf 'lpc_ich\niTCO_wdt\n' >>/etc/modules
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends watchdog || true
+printf 'watchdog-device = /dev/watchdog\ninterval = 5\n' >/etc/watchdog.conf
+systemctl enable watchdog.service || true
 ufw default deny incoming; ufw default allow outgoing; ufw allow "$SSH_PORT/tcp"; ufw allow "$DROPBEAR_PORT/tcp"; for p in $WEB_PORTS; do ufw allow "$p/tcp"; done; ufw --force enable
 mkdir -p /etc/fail2ban; printf '[DEFAULT]\nbackend = systemd\nbantime = 1h\nfindtime = 10m\nmaxretry = 5\n[sshd]\nenabled = true\nport = %s\nbackend = systemd\n' "$SSH_PORT" >/etc/fail2ban/jail.local
 cat >>/etc/default/grub <<GRUB

@@ -63,6 +63,9 @@ popularity-contest popularity-contest/participate boolean false
 d-i grub-installer/only_debian boolean true
 d-i grub-installer/bootdev string $TARGET_DISK
 d-i finish-install/reboot_in_progress note
+# Re-arm the watchdog pet loop in the installer environment (the initramfs
+# background loop normally survives, but a fresh loop is idempotent and cheap).
+d-i preseed/early_command string [ -x /scripts/init-top/zz-watchdog-pet ] && /scripts/init-top/zz-watchdog-pet
 d-i preseed/late_command string /opt/reinstall/late.sh < /dev/null > /target/var/log/vps-postinst.log 2>&1
 EOF
   if command -v debconf-set-selections >/dev/null 2>&1; then run debconf-set-selections -c "$WORKDIR/preseed.cfg" || die "generated preseed.cfg failed debconf-set-selections syntax check"; fi
