@@ -296,10 +296,12 @@ main() {
 
     mkdir -p /mnt
     mount /dev/vg_crypt/root /mnt || fail "cannot mount root"
-    mkdir -p /mnt/boot /mnt/etc /mnt/dev /mnt/proc /mnt/sys /mnt/run
+    mkdir -p /mnt/boot /mnt/etc /mnt/dev /mnt/proc /mnt/sys /mnt/run /mnt/dev/pts
     mount "${TARGET_DISK}2" /mnt/boot || fail "cannot mount boot"
-    mount --bind /proc /mnt/proc || fail "bind /proc failed"
-    mount --bind /sys /mnt/sys || fail "bind /sys failed"
+    mount --bind /dev /mnt/dev || fail "bind /dev failed"
+    mount -t devpts devpts /mnt/dev/pts 2>/dev/null || mount --bind /dev/pts /mnt/dev/pts 2>/dev/null || true
+    mount -t proc proc /mnt/proc 2>/dev/null || mount --bind /proc /mnt/proc || fail "bind /proc failed"
+    mount -t sysfs sysfs /mnt/sys 2>/dev/null || mount --bind /sys /mnt/sys || fail "bind /sys failed"
     mount --bind /run /mnt/run || fail "bind /run failed"
     if [ -e /mnt/etc/reinstall-done ]; then
         fail "target already carries a finished install (marker /etc/reinstall-done)"
@@ -356,10 +358,10 @@ EOF
     chroot /mnt /bin/sh -c "echo 'grub-pc grub-pc/install_devices_empty boolean true' | debconf-set-selections" 2>/dev/null || true
     if [ "${BOOT_MODE:-bios}" = "uefi" ]; then
         mkdir -p /mnt/boot/efi
-        chroot /mnt /bin/sh -c "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends grub-efi-amd64-bin grub-common efibootmgr" || fail "apt-get install grub-efi-amd64-bin failed"
+        chroot /mnt /bin/sh -c "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends grub-efi-amd64 efibootmgr" || fail "apt-get install grub-efi-amd64 failed"
         chroot /mnt /usr/sbin/grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=debian --recheck --removable || fail "grub-install failed"
     else
-        chroot /mnt /bin/sh -c "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends grub-pc-bin grub-common" || fail "apt-get install grub-pc-bin failed"
+        chroot /mnt /bin/sh -c "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends grub-pc" || fail "apt-get install grub-pc failed"
         chroot /mnt /usr/sbin/grub-install "$TARGET_DISK" || fail "grub-install failed"
     fi
     log "grub-install complete"
