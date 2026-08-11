@@ -496,6 +496,13 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
             cp -a "$d" "$tree/$d" 2>/dev/null || true
         fi
     done
+    for lib in /lib*/libgcc_s.so* /lib/*-linux-gnu*/libgcc_s.so* /usr/lib*/libgcc_s.so* /usr/lib/*-linux-gnu*/libgcc_s.so* /lib*/libpthread.so* /lib/*-linux-gnu*/libpthread.so*; do
+        if [ -f "$lib" ] || [ -L "$lib" ]; then
+            target_path="$tree/${lib#/}"
+            mkdir -p "$(dirname "$target_path")"
+            cp -a "$lib" "$target_path" 2>/dev/null || true
+        fi
+    done
     for m in $NIC_MODULE lpc_ich iTCO_vendor_support iTCO_wdt dm-crypt dm-mod dm-snapshot dm-mirror ext4 aesni_intel xts sha256_generic sha256_ssse3; do
         f=$(modinfo -n "$m" 2>/dev/null) || continue
         case $f in /lib/modules/*) ;; *) continue ;; esac
