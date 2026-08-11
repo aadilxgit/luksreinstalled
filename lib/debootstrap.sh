@@ -22,7 +22,7 @@ DEBOOTSTRAP_APT_PKGS=(debootstrap parted cryptsetup-bin lvm2 python3 perl binuti
 # Packages debootstrap installs inside the new system (mirrors the d-i
 # pkgsel/include list; apt-listchanges omitted — the postinstall worker does
 # not use it).
-DEBOOTSTRAP_INCLUDE='linux-image-amd64,grub-pc,openssh-server,cryptsetup,cryptsetup-initramfs,dropbear-initramfs,lvm2,sudo,ufw,fail2ban,python3-systemd,unattended-upgrades,ca-certificates,ifupdown'
+DEBOOTSTRAP_INCLUDE='linux-image-amd64,openssh-server,cryptsetup,cryptsetup-initramfs,dropbear-initramfs,lvm2,sudo,ufw,fail2ban,python3-systemd,unattended-upgrades,ca-certificates,ifupdown'
 
 # Pure: dotted netmask -> prefix in REPLY (also used to bake the engine's
 # network fallback). Rejects non-contiguous masks.
@@ -351,8 +351,17 @@ EOF
     log "system config written (fstab/crypttab/interfaces/hostname)"
 
     # --- bootloader ---
-    [ -x /mnt/usr/sbin/grub-install ] || fail "grub-install missing in target (debootstrap include failed?)"
-    chroot /mnt /usr/sbin/grub-install "$TARGET_DISK" || fail "grub-install failed"
+    log "installing bootloader (grub)"
+    chroot /mnt /bin/sh -c "echo 'grub-pc grub-pc/install_devices string $TARGET_DISK' | debconf-set-selections" 2>/dev/null || true
+    chroot /mnt /bin/sh -c "echo 'grub-pc grub-pc/install_devices_empty boolean true' | debconf-set-selections" 2>/dev/null || true
+    if [ "${BOOT_MODE:-bios}" = "uefi" ]; then
+        mkdir -p /mnt/boot/efi
+        chroot /mnt /bin/sh -c "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends grub-efi-amd64 efibootmgr" || fail "apt-get install grub-efi-amd64 failed"
+        chroot /mnt /usr/sbin/grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=debian --recheck --removable || fail "grub-install failed"
+    else
+        chroot /mnt /bin/sh -c "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends grub-pc" || fail "apt-get install grub-pc failed"
+        chroot /mnt /usr/sbin/grub-install "$TARGET_DISK" || fail "grub-install failed"
+    fi
     log "grub-install complete"
 
     # --- postinstall: passphrase rotation, admin user, dropbear, hardening ---
