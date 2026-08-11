@@ -292,10 +292,10 @@ main() {
     [ "$(blkid -s TYPE -o value "${TARGET_DISK}2" 2>/dev/null)" = ext4 ] || { mkfs.ext4 -F -q "${TARGET_DISK}2" || fail "mkfs boot failed"; log "boot filesystem created"; }
     [ "$(blkid -s TYPE -o value /dev/vg_crypt/swap 2>/dev/null)" = swap ] || mkswap -f /dev/vg_crypt/swap >/dev/null || fail "mkswap failed"
 
-    mkdir -p /mnt /mnt/boot /mnt/dev /mnt/proc /mnt/sys /mnt/run
+    mkdir -p /mnt
     mount /dev/vg_crypt/root /mnt || fail "cannot mount root"
+    mkdir -p /mnt/boot /mnt/etc /mnt/dev /mnt/proc /mnt/sys /mnt/run
     mount "${TARGET_DISK}2" /mnt/boot || fail "cannot mount boot"
-    mount --bind /dev /mnt/dev || fail "bind /dev failed"
     mount --bind /proc /mnt/proc || fail "bind /proc failed"
     mount --bind /sys /mnt/sys || fail "bind /sys failed"
     mount --bind /run /mnt/run || fail "bind /run failed"
