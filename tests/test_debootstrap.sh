@@ -55,7 +55,7 @@ rm -f "$envf"
 pass render_engine_env
 
 cmdl=$(debootstrap_cmdline)
-[[ $cmdl == *'nomodeset console=ttyS0,115200n8 console=tty0 ip=203.0.113.10::203.0.113.1:255.255.255.0::eth0:off' ]] || { echo "debootstrap_cmdline wrong: $cmdl"; exit 1; }
+[[ $cmdl == *'nomodeset console=ttyS0,115200n8 console=tty0 ip=203.0.113.10::203.0.113.1:255.255.255.0::any:off net.ifnames=0 biosdevname=0' ]] || { echo "debootstrap_cmdline wrong: $cmdl"; exit 1; }
 pass debootstrap_cmdline
 
 # Kernel resolution: real files live under /boot on Debian; / symlinks are optional.

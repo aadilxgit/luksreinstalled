@@ -147,7 +147,7 @@ render_engine_env() {  # $1 = output path
 
 debootstrap_cmdline() {  # sets + prints CMDLINE; no preseed args, just console + static ip
     : "${IPV4_ADDR:?}" "${GATEWAY:?}" "${NETMASK:?}" "${PRIMARY_IFACE:?}"
-    CMDLINE="nomodeset console=ttyS0,115200n8 console=tty0 ip=$IPV4_ADDR::$GATEWAY:$NETMASK::$PRIMARY_IFACE:off"
+    CMDLINE="nomodeset console=ttyS0,115200n8 console=tty0 ip=$IPV4_ADDR::$GATEWAY:$NETMASK::any:off net.ifnames=0 biosdevname=0"
     printf '%s\n' "$CMDLINE"
 }
 

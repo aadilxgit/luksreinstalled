@@ -31,7 +31,8 @@ chmod 600 /etc/dropbear/initramfs/authorized_keys /etc/dropbear-initramfs/author
 printf 'DROPBEAR_OPTIONS="-j -k %s"\n' "${DROPBEAR_PORT:+-p $DROPBEAR_PORT}" >/etc/dropbear/initramfs/dropbear.conf
 printf 'DROPBEAR_OPTIONS="-j -k %s"\n' "${DROPBEAR_PORT:+-p $DROPBEAR_PORT}" >/etc/dropbear-initramfs/config
 printf '%s\n' "$NIC_MODULE" >>/etc/initramfs-tools/modules
-# The provider runs an emulated ICH9 TCO watchdog (iTCO_wdt): the VM is reset
+for m in virtio_net e1000e igb ixgbe vmxnet3 r8169 xen-netfront lpc_ich iTCO_vendor_support iTCO_wdt; do printf '%s\n' "$m" >>/etc/initramfs-tools/modules 2>/dev/null || true; done
+printf 'lpc_ich\niTCO_vendor_support\niTCO_wdt\n' >>/etc/modules
 # when the guest leaves it unserviced, so load the drivers everywhere and run
 # a petting daemon on the installed system.
 printf 'lpc_ich\niTCO_wdt\n' >>/etc/initramfs-tools/modules
@@ -42,7 +43,7 @@ systemctl enable watchdog.service || true
 ufw default deny incoming || true; ufw default allow outgoing || true; ufw allow "$SSH_PORT/tcp" || true; ufw allow "$DROPBEAR_PORT/tcp" || true; for p in $WEB_PORTS; do ufw allow "$p/tcp" || true; done; ufw --force enable || true
 mkdir -p /etc/fail2ban; printf '[DEFAULT]\nbackend = systemd\nbantime = 1h\nfindtime = 10m\nmaxretry = 5\n[sshd]\nenabled = true\nport = %s\nbackend = systemd\n' "$SSH_PORT" >/etc/fail2ban/jail.local
 cat >>/etc/default/grub <<GRUB
-GRUB_CMDLINE_LINUX="ip=$IPV4::$GATEWAY:$NETMASK::$IFACE:off console=ttyS0,115200n8 console=tty0"
+GRUB_CMDLINE_LINUX="ip=$IPV4::$GATEWAY:$NETMASK::any:off net.ifnames=0 biosdevname=0 console=ttyS0,115200n8 console=tty0"
 GRUB
 cat >/etc/apt/apt.conf.d/50unattended-upgrades <<'UPG'
 Unattended-Upgrade::Origins-Pattern {
