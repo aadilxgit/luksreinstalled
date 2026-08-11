@@ -194,6 +194,20 @@ if [ "$(basename "$src")" != "$(basename "$real_src")" ]; then
     ln -sf "$(basename "$real_src")" "$DESTDIR/$target_dir/$(basename "$src")"
 fi
 [[ -L "$DESTDIR/sbin/ip" && "$(readlink "$DESTDIR/sbin/ip")" == "ip.iproute2" ]] || { echo 'safe_copy failed to create alternative symlink'; exit 1; }
-
+# 3. Pre-existing busybox symlink cleanup: /sbin/mkfs.ext4 -> busybox
+mkdir -p "$DESTDIR/bin" "$DESTDIR/sbin"
+touch "$DESTDIR/bin/busybox"
+ln -sf busybox "$DESTDIR/sbin/mkfs.ext4"
+src=/sbin/mkfs.ext4; target_dir=/sbin/; real_src=/sbin/mke2fs
+sname=$(basename "$src"); rname=$(basename "$real_src")
+rm -f "$DESTDIR/$target_dir/$sname" "$DESTDIR/$target_dir/$rname"
+rm -f "$DESTDIR/sbin/$sname" "$DESTDIR/bin/$sname" "$DESTDIR/usr/sbin/$sname" "$DESTDIR/usr/bin/$sname" 2>/dev/null || true
+rm -f "$DESTDIR/sbin/$rname" "$DESTDIR/bin/$rname" "$DESTDIR/usr/sbin/$rname" "$DESTDIR/usr/bin/$rname" 2>/dev/null || true
+copy_exec "$real_src" "$target_dir"
+if [ "$sname" != "$rname" ]; then
+    mkdir -p "$DESTDIR/$target_dir"
+    ln -sf "$rname" "$DESTDIR/$target_dir/$sname"
+fi
+[[ -L "$DESTDIR/sbin/mkfs.ext4" && "$(readlink "$DESTDIR/sbin/mkfs.ext4")" == "mke2fs" ]] || { echo 'safe_copy failed to replace busybox symlink for mkfs.ext4'; exit 1; }
 rm -rf "$tdir"
 pass safe_copy_symlinks

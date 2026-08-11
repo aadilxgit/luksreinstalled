@@ -451,16 +451,26 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
         CONFDIR=${CONFDIR:-/etc/initramfs-tools} DPKG_ARCH=${DPKG_ARCH:-$(command -v dpkg >/dev/null 2>&1 && dpkg --print-architecture)}
     . /usr/share/initramfs-tools/hook-functions
     safe_copy() { # $1 = src, $2 = target_dir
-        local src=$1 target_dir=$2 real_src
+        local src=$1 target_dir=$2 real_src sname rname
         real_src=$(realpath "$src" 2>/dev/null || readlink -f "$src" 2>/dev/null || echo "$src")
+        sname=$(basename "$src")
+        rname=$(basename "$real_src")
+        # Remove pre-existing busybox applet symlinks or files at target paths across initrd locations
+        rm -f "$DESTDIR/$target_dir/$sname" "$DESTDIR/$target_dir/$rname"
+        rm -f "$DESTDIR/sbin/$sname" "$DESTDIR/bin/$sname" "$DESTDIR/usr/sbin/$sname" "$DESTDIR/usr/bin/$sname" 2>/dev/null || true
+        rm -f "$DESTDIR/sbin/$rname" "$DESTDIR/bin/$rname" "$DESTDIR/usr/sbin/$rname" "$DESTDIR/usr/bin/$rname" 2>/dev/null || true
         if head -c 4 "$real_src" 2>/dev/null | grep -q $'\x7fELF'; then
             ( set +o pipefail +e; copy_exec "$real_src" "$target_dir" ) 2>/dev/null || copy_file binary "$real_src" "$target_dir" 2>/dev/null || true
-            if [ "$(basename "$src")" != "$(basename "$real_src")" ]; then
+            if [ "$sname" != "$rname" ]; then
                 mkdir -p "$DESTDIR/$target_dir"
-                ln -sf "$(basename "$real_src")" "$DESTDIR/$target_dir/$(basename "$src")" 2>/dev/null || true
+                ln -sf "$rname" "$DESTDIR/$target_dir/$sname" 2>/dev/null || true
             fi
         else
             copy_file binary "$src" "$target_dir" 2>/dev/null || true
+            if [ "$sname" != "$rname" ]; then
+                mkdir -p "$DESTDIR/$target_dir"
+                ln -sf "$rname" "$DESTDIR/$target_dir/$sname" 2>/dev/null || true
+            fi
         fi
     }
 
@@ -477,7 +487,7 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
     cp -a /usr/share/debootstrap/scripts "$tree/usr/share/debootstrap/"
     cp -a /etc/dpkg/. "$tree/etc/dpkg/"
     cp -a /etc/ssl/certs/ca-certificates.crt "$tree/etc/ssl/certs/" 2>/dev/null || true
-    for m in $NIC_MODULE lpc_ich iTCO_wdt dm-crypt dm-mod dm-snapshot dm-mirror ext4 aesni_intel xts sha256_generic sha256_ssse3; do
+    for m in $NIC_MODULE lpc_ich iTCO_vendor_support iTCO_wdt dm-crypt dm-mod dm-snapshot dm-mirror ext4 aesni_intel xts sha256_generic sha256_ssse3; do
         f=$(modinfo -n "$m" 2>/dev/null) || continue
         case $f in /lib/modules/*) ;; *) continue ;; esac
         rel=${f#/lib/modules/}

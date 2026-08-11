@@ -20,6 +20,7 @@ write_watchdog_pet_hook() {  # $1 = payload root
     cat >"$hook" <<'EOF'
 #!/bin/sh
 ( while :; do
+    modprobe iTCO_vendor_support 2>/dev/null || true
     modprobe iTCO_wdt 2>/dev/null || modprobe i6300esb 2>/dev/null || true
     if [ -e /dev/watchdog ]; then printf 'x' >/dev/watchdog 2>/dev/null || true; fi
     sleep 5
