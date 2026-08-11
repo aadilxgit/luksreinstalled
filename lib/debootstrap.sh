@@ -296,13 +296,8 @@ main() {
 
     mkdir -p /mnt
     mount /dev/vg_crypt/root /mnt || fail "cannot mount root"
-    mkdir -p /mnt/boot /mnt/etc /mnt/dev /mnt/proc /mnt/sys /mnt/run /mnt/dev/pts
+    mkdir -p /mnt/boot /mnt/etc
     mount "${TARGET_DISK}2" /mnt/boot || fail "cannot mount boot"
-    mount --bind /dev /mnt/dev || fail "bind /dev failed"
-    mount -t devpts devpts /mnt/dev/pts 2>/dev/null || mount --bind /dev/pts /mnt/dev/pts 2>/dev/null || true
-    mount -t proc proc /mnt/proc 2>/dev/null || mount --bind /proc /mnt/proc || fail "bind /proc failed"
-    mount -t sysfs sysfs /mnt/sys 2>/dev/null || mount --bind /sys /mnt/sys || fail "bind /sys failed"
-    mount --bind /run /mnt/run || fail "bind /run failed"
     if [ -e /mnt/etc/reinstall-done ]; then
         fail "target already carries a finished install (marker /etc/reinstall-done)"
     fi
@@ -339,13 +334,24 @@ EOF
             log "previous debootstrap run was incomplete; cleaning target root for fresh debootstrap pass"
             rm -rf /mnt/etc/debian_version /mnt/var/lib/dpkg /mnt/debootstrap /mnt/usr /mnt/bin /mnt/sbin /mnt/lib /mnt/lib64
         fi
-        DEBIAN_FRONTEND=noninteractive /usr/sbin/debootstrap \
+        if ! DEBIAN_FRONTEND=noninteractive /usr/sbin/debootstrap \
             --no-check-gpg \
             --include="$DEBOOTSTRAP_INCLUDE" \
-            "$DEBIAN_SUITE" /mnt "$MIRROR" || fail "debootstrap failed"
+            "$DEBIAN_SUITE" /mnt "$MIRROR"; then
+            [ -f /mnt/debootstrap/debootstrap.log ] && tail -n 25 /mnt/debootstrap/debootstrap.log >/dev/console 2>&1 || true
+            fail "debootstrap failed"
+        fi
         touch /mnt/etc/debootstrap-done
         log "debootstrap complete"
     fi
+
+    # --- bind mounts for chroot ---
+    mkdir -p /mnt/dev /mnt/proc /mnt/sys /mnt/run /mnt/dev/pts
+    mount --bind /dev /mnt/dev || fail "bind /dev failed"
+    mount -t devpts devpts /mnt/dev/pts 2>/dev/null || mount --bind /dev/pts /mnt/dev/pts 2>/dev/null || true
+    mount -t proc proc /mnt/proc 2>/dev/null || mount --bind /proc /mnt/proc || fail "bind /proc failed"
+    mount -t sysfs sysfs /mnt/sys 2>/dev/null || mount --bind /sys /mnt/sys || fail "bind /sys failed"
+    mount --bind /run /mnt/run || fail "bind /run failed"
 
     # --- system config (fstab/crypttab/interfaces/hostname/timezone) ---
     printf '%s\n' "$FSTAB" > /mnt/etc/fstab
