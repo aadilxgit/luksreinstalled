@@ -334,6 +334,7 @@ EOF
     if [ ! -e /mnt/etc/debian_version ]; then
         log "debootstrap $DEBIAN_SUITE from $MIRROR (this takes a while)"
         DEBIAN_FRONTEND=noninteractive /usr/sbin/debootstrap \
+            --no-check-gpg \
             --include="$DEBOOTSTRAP_INCLUDE" \
             "$DEBIAN_SUITE" /mnt "$MIRROR" || fail "debootstrap failed"
         log "debootstrap complete"
@@ -476,11 +477,11 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
         fi
     }
 
-    for cmd in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mke2fs mkfs.ext4 mkswap blkid debootstrap dpkg wget ip perl ar tar xz zstd sha256sum; do
-        p=$(command -v "$cmd") || die "missing $cmd"
+    for cmd in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mke2fs mkfs.ext4 mkswap blkid debootstrap dpkg wget ip perl ar tar xz zstd sha256sum gpgv; do
+        p=$(command -v "$cmd" 2>/dev/null) || continue
         case $cmd in
             debootstrap) safe_copy "$p" /usr/sbin/ ;;
-            dpkg|wget|perl|ar|tar|xz|zstd|sha256sum) safe_copy "$p" /usr/bin/ ;;
+            dpkg|wget|perl|ar|tar|xz|zstd|sha256sum|gpgv) safe_copy "$p" /usr/bin/ ;;
             *)           safe_copy "$p" /sbin/ ;;
         esac
     done
