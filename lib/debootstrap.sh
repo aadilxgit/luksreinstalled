@@ -292,7 +292,7 @@ main() {
     [ -e /dev/vg_crypt/swap ] || fail "swap LV missing"
     [ "$(blkid -s TYPE -o value /dev/vg_crypt/root 2>/dev/null)" = ext4 ] || { mkfs.ext4 -F -q /dev/vg_crypt/root || fail "mkfs root failed"; log "root filesystem created"; }
     [ "$(blkid -s TYPE -o value "${TARGET_DISK}2" 2>/dev/null)" = ext4 ] || { mkfs.ext4 -F -q "${TARGET_DISK}2" || fail "mkfs boot failed"; log "boot filesystem created"; }
-    [ "$(blkid -s TYPE -o value /dev/vg_crypt/swap 2>/dev/null)" = swap ] || mkswap -f /dev/vg_crypt/swap >/dev/null || fail "mkswap failed"
+    [ "$(blkid -s TYPE -o value /dev/vg_crypt/swap 2>/dev/null)" = swap ] || mkswap /dev/vg_crypt/swap >/dev/null || fail "mkswap failed"
 
     mkdir -p /mnt
     mount /dev/vg_crypt/root /mnt || fail "cannot mount root"
