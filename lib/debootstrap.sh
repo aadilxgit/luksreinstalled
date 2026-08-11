@@ -212,6 +212,13 @@ write_engine_script() {  # $1 = output path
 
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 
+part_dev() {
+    case $1 in
+        *[0-9]) echo "${1}p${2}" ;;
+        *)      echo "${1}${2}" ;;
+    esac
+}
+
 log() {
     printf '[engine] %s %s\n' "$(date -u +%FT%TZ 2>/dev/null || echo '?')" "$*" | tee -a /engine.log >/dev/console
 }
