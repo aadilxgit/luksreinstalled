@@ -18,7 +18,7 @@ _REINSTALL_DEBOOTSTRAP_SH=1
 
 # Packages that must exist on the host so the engine initramfs can embed them.
 # python3: initrd content verification (verify_initrd_content).
-DEBOOTSTRAP_APT_PKGS=(debootstrap parted cryptsetup-bin lvm2 python3 perl)
+DEBOOTSTRAP_APT_PKGS=(debootstrap parted cryptsetup-bin lvm2 python3 perl binutils xz-utils)
 # Packages debootstrap installs inside the new system (mirrors the d-i
 # pkgsel/include list; apt-listchanges omitted — the postinstall worker does
 # not use it).
@@ -164,6 +164,8 @@ debootstrap_preflight() {
         case $pkg in
             cryptsetup-bin) cmd=cryptsetup ;;
             lvm2) cmd=lvm ;;
+            binutils) cmd=ar ;;
+            xz-utils) cmd=xz ;;
             *) cmd=$pkg ;;
         esac
         command -v "$cmd" >/dev/null 2>&1 || missing+=("$pkg")
