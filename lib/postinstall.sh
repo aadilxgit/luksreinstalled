@@ -26,7 +26,7 @@ mkdir -p "/home/$ADMIN_USER/.ssh"; printf '%s\n' "$ADMIN_PUBKEYS" > "/home/$ADMI
 mkdir -p /etc/ssh/sshd_config.d; printf 'Port %s\nPermitRootLogin no\nPasswordAuthentication no\nPubkeyAuthentication yes\nKbdInteractiveAuthentication no\nAllowUsers %s\n' "$SSH_PORT" "$ADMIN_USER" >/etc/ssh/sshd_config.d/99-hardening.conf
 systemctl disable --now ssh.socket || true; systemctl enable --now ssh.service || true
 mkdir -p /etc/dropbear/initramfs /etc/dropbear-initramfs; : > /etc/dropbear/initramfs/authorized_keys; : > /etc/dropbear-initramfs/authorized_keys
-printf '%s\n' "$DROPBEAR_KEYS" | while IFS= read -r k; do [ -n "$k" ] || continue; printf 'restrict,command="/bin/cryptroot-unlock" %s\n' "$k" >>/etc/dropbear/initramfs/authorized_keys; printf 'restrict,command="/bin/cryptroot-unlock" %s\n' "$k" >>/etc/dropbear-initramfs/authorized_keys; done
+printf '%s\n' "$DROPBEAR_KEYS" | while IFS= read -r k; do [ -n "$k" ] || continue; printf 'command="/bin/cryptroot-unlock" %s\n' "$k" >>/etc/dropbear/initramfs/authorized_keys; printf 'command="/bin/cryptroot-unlock" %s\n' "$k" >>/etc/dropbear-initramfs/authorized_keys; done
 chmod 600 /etc/dropbear/initramfs/authorized_keys /etc/dropbear-initramfs/authorized_keys 2>/dev/null || true
 printf 'DROPBEAR_OPTIONS="-j -k %s"\n' "${DROPBEAR_PORT:+-p $DROPBEAR_PORT}" >/etc/dropbear/initramfs/dropbear.conf
 printf 'DROPBEAR_OPTIONS="-j -k %s"\n' "${DROPBEAR_PORT:+-p $DROPBEAR_PORT}" >/etc/dropbear-initramfs/config
