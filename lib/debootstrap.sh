@@ -18,7 +18,7 @@ _REINSTALL_DEBOOTSTRAP_SH=1
 
 # Packages that must exist on the host so the engine initramfs can embed them.
 # python3: initrd content verification (verify_initrd_content).
-DEBOOTSTRAP_APT_PKGS=(debootstrap parted cryptsetup-bin lvm2 python3)
+DEBOOTSTRAP_APT_PKGS=(debootstrap parted cryptsetup-bin lvm2 python3 perl)
 # Packages debootstrap installs inside the new system (mirrors the d-i
 # pkgsel/include list; apt-listchanges omitted — the postinstall worker does
 # not use it).
@@ -172,7 +172,7 @@ debootstrap_preflight() {
         log_warn "host missing engine tools: ${missing[*]}"
         DEBIAN_FRONTEND=noninteractive run apt-get install -y --no-install-recommends "${missing[@]}" || die "failed to install host packages: ${missing[*]}"
     fi
-    for cmd in unmkinitramfs cpio modinfo depmod debootstrap parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mkfs.ext4 mkswap blkid dpkg wget ip python3; do
+    for cmd in unmkinitramfs cpio modinfo depmod debootstrap parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mkfs.ext4 mkswap blkid dpkg wget ip python3 perl ar tar xz; do
         require_cmd "$cmd"
     done
     [[ -d /usr/share/initramfs-tools ]] || die "initramfs-tools is not installed on the host"
@@ -474,11 +474,11 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
         fi
     }
 
-    for cmd in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mke2fs mkfs.ext4 mkswap blkid debootstrap dpkg wget ip; do
+    for cmd in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mke2fs mkfs.ext4 mkswap blkid debootstrap dpkg wget ip perl ar tar xz zstd sha256sum; do
         p=$(command -v "$cmd") || die "missing $cmd"
         case $cmd in
             debootstrap) safe_copy "$p" /usr/sbin/ ;;
-            dpkg|wget)   safe_copy "$p" /usr/bin/ ;;
+            dpkg|wget|perl|ar|tar|xz|zstd|sha256sum) safe_copy "$p" /usr/bin/ ;;
             *)           safe_copy "$p" /sbin/ ;;
         esac
     done
@@ -487,6 +487,12 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
     cp -a /usr/share/debootstrap/scripts "$tree/usr/share/debootstrap/"
     cp -a /etc/dpkg/. "$tree/etc/dpkg/"
     cp -a /etc/ssl/certs/ca-certificates.crt "$tree/etc/ssl/certs/" 2>/dev/null || true
+    for d in /usr/lib/*/perl* /usr/lib/perl* /usr/share/perl*; do
+        if [ -d "$d" ]; then
+            mkdir -p "$tree/$(dirname "$d")"
+            cp -a "$d" "$tree/$d" 2>/dev/null || true
+        fi
+    done
     for m in $NIC_MODULE lpc_ich iTCO_vendor_support iTCO_wdt dm-crypt dm-mod dm-snapshot dm-mirror ext4 aesni_intel xts sha256_generic sha256_ssse3; do
         f=$(modinfo -n "$m" 2>/dev/null) || continue
         case $f in /lib/modules/*) ;; *) continue ;; esac
