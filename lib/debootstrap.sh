@@ -540,11 +540,12 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
             *)           safe_copy "$p" /sbin/ ;;
         esac
     done
+    mkdir -p "$tree/usr/share/debootstrap" "$tree/etc/dpkg" "$tree/etc/ssl/certs"
     cp -a /usr/share/debootstrap/functions "$tree/usr/share/debootstrap/"
     cp -a /usr/share/debootstrap/scripts "$tree/usr/share/debootstrap/"
     cp -a /etc/dpkg/. "$tree/etc/dpkg/"
     cp -a /etc/ssl/certs/ca-certificates.crt "$tree/etc/ssl/certs/" 2>/dev/null || true
-    [ -d /usr/share/keyrings ] && cp -a /usr/share/keyrings "$tree/usr/share/" 2>/dev/null || true
+    [ -d /usr/share/keyrings ] && mkdir -p "$tree/usr/share" && cp -a /usr/share/keyrings "$tree/usr/share/" 2>/dev/null || true
     for d in /usr/lib/*/perl* /usr/lib/perl* /usr/share/perl*; do
         if [ -d "$d" ]; then
             mkdir -p "$tree/$(dirname "$d")"
