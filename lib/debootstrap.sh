@@ -18,7 +18,7 @@ _REINSTALL_DEBOOTSTRAP_SH=1
 
 # Packages that must exist on the host so the engine initramfs can embed them.
 # python3: initrd content verification (verify_initrd_content).
-DEBOOTSTRAP_APT_PKGS=(debootstrap parted cryptsetup-bin lvm2 python3 perl binutils xz-utils)
+DEBOOTSTRAP_APT_PKGS=(debootstrap parted cryptsetup-bin lvm2 python3 perl binutils xz-utils dosfstools)
 # Packages debootstrap installs inside the new system (mirrors the d-i
 # pkgsel/include list; apt-listchanges omitted — the postinstall worker does
 # not use it).
@@ -45,14 +45,27 @@ netmask_prefix() {  # $1 = dotted netmask
     REPLY=$n
 }
 
+part_dev() {  # $1 = disk, $2 = part_num
+    case $1 in
+        *[0-9]) echo "${1}p${2}" ;;
+        *)      echo "${1}${2}" ;;
+    esac
+}
+
 # Pure renderers — the engine receives these blocks via its env file.
 render_engine_fstab() {  # root / boot / swap (tmpfs lines are appended by the postinstall worker)
     : "${TARGET_DISK:?}"
+    local part1 part2
+    part1=$(part_dev "$TARGET_DISK" 1)
+    part2=$(part_dev "$TARGET_DISK" 2)
     cat <<EOF
 /dev/mapper/vg_crypt-root / ext4 defaults 0 1
 /dev/mapper/vg_crypt-swap none swap sw 0 0
-${TARGET_DISK}2 /boot ext4 defaults 0 2
+$part2 /boot ext4 defaults 0 2
 EOF
+    if [[ "${BOOT_MODE:-bios}" == uefi ]]; then
+        printf '%s /boot/efi vfat umask=0077 0 1\n' "$part1"
+    fi
 }
 
 render_engine_interfaces() {
@@ -166,6 +179,7 @@ debootstrap_preflight() {
             lvm2) cmd=lvm ;;
             binutils) cmd=ar ;;
             xz-utils) cmd=xz ;;
+            dosfstools) cmd=mkfs.vfat ;;
             *) cmd=$pkg ;;
         esac
         command -v "$cmd" >/dev/null 2>&1 || missing+=("$pkg")
@@ -257,30 +271,45 @@ main() {
     fi
 
     # --- partition (first run only; resume path skips straight to open) ---
-    if ! cryptsetup isLuks "${TARGET_DISK}3" 2>/dev/null; then
-        log "partitioning $TARGET_DISK (gpt: biosgrub + boot ${BOOT_SIZE_MB}M + LUKS)"
-        parted -s "$TARGET_DISK" -- mklabel gpt \
-            mkpart biosgrub 1MiB 2MiB \
-            set 1 bios_grub on \
-            mkpart boot 2MiB "$((BOOT_SIZE_MB + 2))MiB" \
-            mkpart crypt "$((BOOT_SIZE_MB + 2))MiB" 100% || fail "parted failed"
+    local part1 part2 part3
+    part1=$(part_dev "$TARGET_DISK" 1)
+    part2=$(part_dev "$TARGET_DISK" 2)
+    part3=$(part_dev "$TARGET_DISK" 3)
+
+    # --- partition (first run only; resume path skips straight to open) ---
+    if ! cryptsetup isLuks "$part3" 2>/dev/null; then
+        if [ "${BOOT_MODE:-bios}" = "uefi" ]; then
+            log "partitioning $TARGET_DISK (gpt: ESP 512M + boot ${BOOT_SIZE_MB}M + LUKS)"
+            parted -s "$TARGET_DISK" -- mklabel gpt \
+                mkpart ESP fat32 1MiB 513MiB \
+                set 1 esp on \
+                mkpart boot ext4 513MiB "$((BOOT_SIZE_MB + 513))MiB" \
+                mkpart crypt "$((BOOT_SIZE_MB + 513))MiB" 100% || fail "parted failed"
+        else
+            log "partitioning $TARGET_DISK (gpt: biosgrub + boot ${BOOT_SIZE_MB}M + LUKS)"
+            parted -s "$TARGET_DISK" -- mklabel gpt \
+                mkpart biosgrub 1MiB 2MiB \
+                set 1 bios_grub on \
+                mkpart boot 2MiB "$((BOOT_SIZE_MB + 2))MiB" \
+                mkpart crypt "$((BOOT_SIZE_MB + 2))MiB" 100% || fail "parted failed"
+        fi
         partprobe "$TARGET_DISK" || true
         sleep 3
         udevadm settle 2>/dev/null || true
-        [ -b "${TARGET_DISK}3" ] || fail "partition ${TARGET_DISK}3 did not appear"
+        [ -b "$part3" ] || fail "partition $part3 did not appear"
         printf '%s' "$TMPPW" > /run/tmp.key
         chmod 600 /run/tmp.key
-        cryptsetup luksFormat --type luks2 --batch-mode --key-file=/run/tmp.key "${TARGET_DISK}3" || fail "luksFormat failed"
+        cryptsetup luksFormat --type luks2 --batch-mode --key-file=/run/tmp.key "$part3" || fail "luksFormat failed"
         log "LUKS container created (temporary key; rotated to the user passphrase at postinstall)"
     else
-        log "existing LUKS detected on ${TARGET_DISK}3 — resuming"
+        log "existing LUKS detected on $part3 — resuming"
         printf '%s' "$TMPPW" > /run/tmp.key
         chmod 600 /run/tmp.key
     fi
 
     # --- LUKS + LVM + filesystems ---
-    LUKS_UUID=$(cryptsetup luksUUID "${TARGET_DISK}3") || fail "cannot read LUKS UUID"
-    cryptsetup open "${TARGET_DISK}3" cryptroot --key-file=/run/tmp.key || fail "cryptsetup open failed"
+    LUKS_UUID=$(cryptsetup luksUUID "$part3") || fail "cannot read LUKS UUID"
+    cryptsetup open "$part3" cryptroot --key-file=/run/tmp.key || fail "cryptsetup open failed"
     vgchange -ay 2>/dev/null || true
     if [ ! -e /dev/vg_crypt/root ]; then
         log "creating vg_crypt (swap ${SWAP_SIZE_MB}M + root rest)"
@@ -291,15 +320,19 @@ main() {
     fi
     [ -e /dev/vg_crypt/swap ] || fail "swap LV missing"
     [ "$(blkid -s TYPE -o value /dev/vg_crypt/root 2>/dev/null)" = ext4 ] || { mkfs.ext4 -F -q /dev/vg_crypt/root || fail "mkfs root failed"; log "root filesystem created"; }
-    [ "$(blkid -s TYPE -o value "${TARGET_DISK}2" 2>/dev/null)" = ext4 ] || { mkfs.ext4 -F -q "${TARGET_DISK}2" || fail "mkfs boot failed"; log "boot filesystem created"; }
+    [ "$(blkid -s TYPE -o value "$part2" 2>/dev/null)" = ext4 ] || { mkfs.ext4 -F -q "$part2" || fail "mkfs boot failed"; log "boot filesystem created"; }
+    if [ "${BOOT_MODE:-bios}" = "uefi" ]; then
+        [ "$(blkid -s TYPE -o value "$part1" 2>/dev/null)" = vfat ] || { mkfs.vfat -F 32 "$part1" 2>/dev/null || mkfs.fat -F 32 "$part1" || fail "mkfs ESP failed"; log "ESP filesystem created"; }
+    fi
     [ "$(blkid -s TYPE -o value /dev/vg_crypt/swap 2>/dev/null)" = swap ] || mkswap /dev/vg_crypt/swap >/dev/null || fail "mkswap failed"
 
     mkdir -p /mnt
     mount /dev/vg_crypt/root /mnt || fail "cannot mount root"
     mkdir -p /mnt/boot /mnt/etc
-    mount "${TARGET_DISK}2" /mnt/boot || fail "cannot mount boot"
-    if [ -e /mnt/etc/reinstall-done ]; then
-        fail "target already carries a finished install (marker /etc/reinstall-done)"
+    mount "$part2" /mnt/boot || fail "cannot mount boot"
+    if [ "${BOOT_MODE:-bios}" = "uefi" ]; then
+        mkdir -p /mnt/boot/efi
+        mount "$part1" /mnt/boot/efi || fail "cannot mount ESP"
     fi
 
     # resolv.conf + hosts must exist before debootstrap stage 2 so its apt
@@ -499,7 +532,7 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
         fi
     }
 
-    for cmd in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mke2fs mkfs.ext4 mkswap blkid debootstrap dpkg wget ip perl ar tar xz zstd sha256sum gpgv; do
+    for cmd in parted partprobe cryptsetup pvcreate vgcreate lvcreate vgchange mke2fs mkfs.ext4 mkfs.vfat mkswap blkid debootstrap dpkg wget ip perl ar tar xz zstd sha256sum gpgv; do
         p=$(command -v "$cmd" 2>/dev/null) || continue
         case $cmd in
             debootstrap) safe_copy "$p" /usr/sbin/ ;;
@@ -507,7 +540,6 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
             *)           safe_copy "$p" /sbin/ ;;
         esac
     done
-    mkdir -p "$tree/usr/share/debootstrap" "$tree/etc/dpkg" "$tree/etc/ssl/certs"
     cp -a /usr/share/debootstrap/functions "$tree/usr/share/debootstrap/"
     cp -a /usr/share/debootstrap/scripts "$tree/usr/share/debootstrap/"
     cp -a /etc/dpkg/. "$tree/etc/dpkg/"
