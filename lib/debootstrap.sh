@@ -459,7 +459,8 @@ EOF
     log "DONE — rebooting into the new system. Unlock with the LUKS passphrase on the console, or: ssh root@$IPV4 (dropbear, port 22)"
     sync
     sleep 2
-    reboot
+    reboot -f 2>/dev/null || reboot -f -p 2>/dev/null || { echo 1 > /proc/sys/kernel/sysrq 2>/dev/null; echo b > /proc/sysrq-trigger 2>/dev/null; } || true
+    sleep 10
     fail "reboot did not happen"
 }
 ( main )
