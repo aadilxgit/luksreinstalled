@@ -81,6 +81,17 @@ iface $PRIMARY_IFACE inet static
     gateway $GATEWAY
     dns-nameservers $DNS_SERVERS
 EOF
+    if [[ "$PRIMARY_IFACE" != eth0 ]]; then
+        cat <<EOF
+
+allow-hotplug eth0
+iface eth0 inet static
+    address $IPV4_ADDR
+    netmask $NETMASK
+    gateway $GATEWAY
+    dns-nameservers $DNS_SERVERS
+EOF
+    fi
 }
 
 render_engine_hosts() {
