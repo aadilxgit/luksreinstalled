@@ -406,7 +406,7 @@ EOF
 
     # --- system config (fstab/crypttab/interfaces/hostname/timezone) ---
     printf '%s\n' "$FSTAB" > /mnt/etc/fstab
-    printf 'vg_crypt UUID=%s none luks\n' "$LUKS_UUID" > /mnt/etc/crypttab
+    printf 'cryptroot UUID=%s none luks\n' "$LUKS_UUID" > /mnt/etc/crypttab
     printf '%s\n' "$INTERFACES" > /mnt/etc/network/interfaces
     printf '%s\n' "$HOSTNAME" > /mnt/etc/hostname
     printf '%s\n' "$TIMEZONE" > /mnt/etc/timezone
