@@ -35,7 +35,7 @@ printf 'lpc_ich\niTCO_wdt\n' >>/etc/modules
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends watchdog || true
 printf 'watchdog-device = /dev/watchdog\ninterval = 5\n' >/etc/watchdog.conf
 systemctl enable watchdog.service || true
-ufw default deny incoming; ufw default allow outgoing; ufw allow "$SSH_PORT/tcp"; ufw allow "$DROPBEAR_PORT/tcp"; for p in $WEB_PORTS; do ufw allow "$p/tcp"; done; ufw --force enable
+ufw default deny incoming || true; ufw default allow outgoing || true; ufw allow "$SSH_PORT/tcp" || true; ufw allow "$DROPBEAR_PORT/tcp" || true; for p in $WEB_PORTS; do ufw allow "$p/tcp" || true; done; ufw --force enable || true
 mkdir -p /etc/fail2ban; printf '[DEFAULT]\nbackend = systemd\nbantime = 1h\nfindtime = 10m\nmaxretry = 5\n[sshd]\nenabled = true\nport = %s\nbackend = systemd\n' "$SSH_PORT" >/etc/fail2ban/jail.local
 cat >>/etc/default/grub <<GRUB
 GRUB_CMDLINE_LINUX="ip=$IPV4::$GATEWAY:$NETMASK::$IFACE:off console=ttyS0,115200n8 console=tty0"
@@ -102,7 +102,7 @@ APT::Periodic::Download-Upgradeable-Packages "1";
 APT::Periodic::AutocleanInterval "7";
 APT
 printf 'tmpfs /tmp tmpfs rw,nosuid,nodev,noexec,relatime,size=2G 0 0\ntmpfs /dev/shm tmpfs rw,nosuid,nodev,noexec,relatime 0 0\n' >>/etc/fstab
-update-initramfs -u -k all; update-grub
+update-initramfs -u -k all 2>/dev/null || update-initramfs -u 2>/dev/null || true; update-grub || true
 EOF
 cat >"$d/secrets.env" <<EOF
 TMPPW=$(printf '%q' "$tmp")

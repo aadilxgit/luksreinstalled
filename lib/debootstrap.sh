@@ -425,6 +425,7 @@ EOF
     chmod 600 /mnt/root/vps-secrets.env
     log "running postinstall inside the new system"
     if ! chroot /mnt /bin/sh -c 'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; /root/vps-postinstall.sh' > /mnt/var/log/vps-postinst.log 2>&1; then
+        [ -f /mnt/var/log/vps-postinst.log ] && tail -n 25 /mnt/var/log/vps-postinst.log >/dev/console 2>&1 || true
         fail "postinstall failed — see /var/log/vps-postinst.log on the new root"
     fi
     log "postinstall complete"
