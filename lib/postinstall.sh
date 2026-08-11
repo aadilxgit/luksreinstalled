@@ -25,7 +25,11 @@ if [ -n "$ADMIN_PASSWORD_HASH" ]; then usermod -p "$ADMIN_PASSWORD_HASH" "$ADMIN
 mkdir -p "/home/$ADMIN_USER/.ssh"; printf '%s\n' "$ADMIN_PUBKEYS" > "/home/$ADMIN_USER/.ssh/authorized_keys"; chown -R "$ADMIN_USER:$ADMIN_USER" "/home/$ADMIN_USER/.ssh"; chmod 600 "/home/$ADMIN_USER/.ssh/authorized_keys"
 mkdir -p /etc/ssh/sshd_config.d; printf 'Port %s\nPermitRootLogin no\nPasswordAuthentication no\nPubkeyAuthentication yes\nKbdInteractiveAuthentication no\nAllowUsers %s\n' "$SSH_PORT" "$ADMIN_USER" >/etc/ssh/sshd_config.d/99-hardening.conf
 systemctl disable --now ssh.socket || true; systemctl enable --now ssh.service || true
-mkdir -p /etc/dropbear/initramfs; : > /etc/dropbear/initramfs/authorized_keys; for key in $DROPBEAR_KEYS; do printf 'restrict,command="/bin/cryptroot-unlock" %s\n' "$key" >>/etc/dropbear/initramfs/authorized_keys; done; chmod 600 /etc/dropbear/initramfs/authorized_keys; printf 'DROPBEAR_OPTIONS="-j -k %s"\n' "${DROPBEAR_PORT:+-p $DROPBEAR_PORT}" >/etc/dropbear/initramfs/dropbear.conf
+mkdir -p /etc/dropbear/initramfs /etc/dropbear-initramfs; : > /etc/dropbear/initramfs/authorized_keys; : > /etc/dropbear-initramfs/authorized_keys
+printf '%s\n' "$DROPBEAR_KEYS" | while IFS= read -r k; do [ -n "$k" ] || continue; printf 'restrict,command="/bin/cryptroot-unlock" %s\n' "$k" >>/etc/dropbear/initramfs/authorized_keys; printf 'restrict,command="/bin/cryptroot-unlock" %s\n' "$k" >>/etc/dropbear-initramfs/authorized_keys; done
+chmod 600 /etc/dropbear/initramfs/authorized_keys /etc/dropbear-initramfs/authorized_keys 2>/dev/null || true
+printf 'DROPBEAR_OPTIONS="-j -k %s"\n' "${DROPBEAR_PORT:+-p $DROPBEAR_PORT}" >/etc/dropbear/initramfs/dropbear.conf
+printf 'DROPBEAR_OPTIONS="-j -k %s"\n' "${DROPBEAR_PORT:+-p $DROPBEAR_PORT}" >/etc/dropbear-initramfs/config
 printf '%s\n' "$NIC_MODULE" >>/etc/initramfs-tools/modules
 # The provider runs an emulated ICH9 TCO watchdog (iTCO_wdt): the VM is reset
 # when the guest leaves it unserviced, so load the drivers everywhere and run
