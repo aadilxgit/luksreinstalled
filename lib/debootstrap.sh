@@ -333,12 +333,17 @@ EOF
     fi
 
     # --- debootstrap (resumes if stage 1 completed) ---
-    if [ ! -e /mnt/etc/debian_version ]; then
+    if [ ! -e /mnt/etc/debootstrap-done ]; then
         log "debootstrap $DEBIAN_SUITE from $MIRROR (this takes a while)"
+        if [ -e /mnt/etc/debian_version ]; then
+            log "previous debootstrap run was incomplete; cleaning target root for fresh debootstrap pass"
+            rm -rf /mnt/etc/debian_version /mnt/var/lib/dpkg /mnt/debootstrap /mnt/usr /mnt/bin /mnt/sbin /mnt/lib /mnt/lib64
+        fi
         DEBIAN_FRONTEND=noninteractive /usr/sbin/debootstrap \
             --no-check-gpg \
             --include="$DEBOOTSTRAP_INCLUDE" \
             "$DEBIAN_SUITE" /mnt "$MIRROR" || fail "debootstrap failed"
+        touch /mnt/etc/debootstrap-done
         log "debootstrap complete"
     fi
 
