@@ -455,7 +455,7 @@ inject_engine_tools() {  # $1 = tree, $2 = kver
         real_src=$(realpath "$src" 2>/dev/null || readlink -f "$src" 2>/dev/null || echo "$src")
         if head -c 4 "$real_src" 2>/dev/null | grep -q $'\x7fELF'; then
             ( set +o pipefail +e; copy_exec "$real_src" "$target_dir" ) 2>/dev/null || copy_file binary "$real_src" "$target_dir" 2>/dev/null || true
-            if [ "$src" != "$real_src" ]; then
+            if [ "$(basename "$src")" != "$(basename "$real_src")" ]; then
                 mkdir -p "$DESTDIR/$target_dir"
                 ln -sf "$(basename "$real_src")" "$DESTDIR/$target_dir/$(basename "$src")" 2>/dev/null || true
             fi

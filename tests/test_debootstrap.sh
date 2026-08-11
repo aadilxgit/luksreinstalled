@@ -171,3 +171,29 @@ pass reinstall_wiring
 plan=$(debootstrap_plan)
 [[ $plan == *'method: debootstrap'* && $plan == *'vg_crypt'* && $plan == *'grub-install'* ]] || { echo 'debootstrap_plan incomplete'; exit 1; }
 pass debootstrap_plan
+# safe_copy symlink test: UsrMerge symlinks (same basename) must not create self-referential symlinks (ELOOP).
+tdir=$(mktemp -d /tmp/reinstall-safecopy.XXXXXX)
+DESTDIR=$tdir
+copy_exec() { mkdir -p "$DESTDIR/$2"; touch "$DESTDIR/$2/$(basename "$1")"; }
+copy_file() { mkdir -p "$DESTDIR/$2"; touch "$DESTDIR/$2/$(basename "$1")"; }
+
+# 1. UsrMerge case: /sbin/ip -> /usr/bin/ip (same basename "ip")
+src=/sbin/ip; target_dir=/sbin/; real_src=/usr/bin/ip
+copy_exec "$real_src" "$target_dir"
+if [ "$(basename "$src")" != "$(basename "$real_src")" ]; then
+    mkdir -p "$DESTDIR/$target_dir"
+    ln -sf "$(basename "$real_src")" "$DESTDIR/$target_dir/$(basename "$src")"
+fi
+[[ -f "$DESTDIR/sbin/ip" && ! -L "$DESTDIR/sbin/ip" ]] || { echo 'safe_copy created self-referential symlink for UsrMerge'; exit 1; }
+
+# 2. Alternatives case: /sbin/ip -> /sbin/ip.iproute2 (different basenames)
+src=/sbin/ip; target_dir=/sbin/; real_src=/sbin/ip.iproute2
+copy_exec "$real_src" "$target_dir"
+if [ "$(basename "$src")" != "$(basename "$real_src")" ]; then
+    mkdir -p "$DESTDIR/$target_dir"
+    ln -sf "$(basename "$real_src")" "$DESTDIR/$target_dir/$(basename "$src")"
+fi
+[[ -L "$DESTDIR/sbin/ip" && "$(readlink "$DESTDIR/sbin/ip")" == "ip.iproute2" ]] || { echo 'safe_copy failed to create alternative symlink'; exit 1; }
+
+rm -rf "$tdir"
+pass safe_copy_symlinks
